@@ -4,6 +4,12 @@
 
 Built by Sumit Nawale
 
+### Live Demonstration
+
+<img src="docs/assets/demo-screenshot-1.png" width="600" alt="PRAHARI Dashboard - Live Detection">
+<img src="docs/assets/demo-screenshot-2.png" width="600" alt="PRAHARI Dashboard - Camera Feed">
+<img src="docs/assets/demo-screenshot-3.png" width="600" alt="PRAHARI Dashboard - Real-time Alerts">
+
 ## Overview
 
 PRAHARI is a production-grade, vendor-agnostic surveillance intelligence platform that unifies heterogeneous camera feeds, runs compute-gated AI inference, correlates events across cameras, and delivers actionable insights to control rooms in real time.
