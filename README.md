@@ -1,8 +1,18 @@
 # PRAHARI
 
+**A EYE THAT SEES EVERYTHING AND EVERYTIME**
+
 **Unified Surveillance Intelligence Platform for Gujarat Police**
 
 Built by Sumit Nawale
+
+[![License](https://img.shields.io/badge/license-Custom%20Open%20Use-blue)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%2B-green)](https://www.python.org/)
+[![Node](https://img.shields.io/badge/node-18%2B-green)](https://nodejs.org/)
+[![Docker](https://img.shields.io/badge/docker-compose-ready-blue)](https://docs.docker.com/compose/)
+[![Status](https://img.shields.io/badge/status-production%20ready-success)](https://github.com/itzlucifa/PRAHARI-)
+
+<img src="docs/assets/banner.png" width="800" alt="PRAHARI Logo">
 
 ### Live Demonstration
 
