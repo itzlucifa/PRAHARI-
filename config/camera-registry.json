@@ -1,0 +1,48 @@
+{
+  "version": "1.0",
+  "updated_at": "2026-09-02T11:30:00Z",
+  "cameras": [
+    {
+      "camera_id": "camera-01",
+      "name": "Main Gate (HD)",
+      "location": "Police Station Entrance",
+      "resolution": "640x480",
+      "fps": 15,
+      "source_type": "file",
+      "source_path": "./test_feeds/camera01.mp4",
+      "rtsp_url": "rtsp://127.0.0.1:8554/camera-01",
+      "webrtc_url": "http://127.0.0.1:8555/camera-01",
+      "status": "active",
+      "vendor": "simulated",
+      "notes": "Standard resolution, person + vehicle detection"
+    },
+    {
+      "camera_id": "camera-02",
+      "name": "Parking Lot (Low-Res)",
+      "location": "Parking Area",
+      "resolution": "320x240",
+      "fps": 15,
+      "source_type": "file",
+      "source_path": "./test_feeds/camera02.mp4",
+      "rtsp_url": "rtsp://127.0.0.1:8554/camera-02",
+      "webrtc_url": "http://127.0.0.1:8555/camera-02",
+      "status": "active",
+      "vendor": "simulated",
+      "notes": "Low resolution, simulating old analog camera"
+    },
+    {
+      "camera_id": "camera-03",
+      "name": "Highway (Phone Cam)",
+      "location": "Highway Junction",
+      "resolution": "1280x720",
+      "fps": 15,
+      "source_type": "file",
+      "source_path": "./test_feeds/camera03.mp4",
+      "rtsp_url": "rtsp://127.0.0.1:8554/camera-03",
+      "webrtc_url": "http://127.0.0.1:8555/camera-03",
+      "status": "active",
+      "vendor": "simulated",
+      "notes": "High resolution, simulating phone IP camera"
+    }
+  ]
+}

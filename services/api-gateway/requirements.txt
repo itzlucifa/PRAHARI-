@@ -1,0 +1,4 @@
+paho-mqtt
+fastapi
+uvicorn[standard]
+python-multipart

@@ -1,0 +1,211 @@
+name: prahari
+
+services:
+  # ── Layer 1: Stream Normalization ──────────────────────────
+  go2rtc:
+    image: alexxit/go2rtc:latest
+    ports:
+      - "1984:1984"
+      - "8554:8554"
+      - "8555:8555"
+    volumes:
+      - ./config/go2rtc.yaml:/config/go2rtc.yaml
+      - ./test_feeds:/test_feeds
+    restart: unless-stopped
+
+  # ── Layer 3: Event Bus ──────────────────────────────────────
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+      - "9003:9003"
+    volumes:
+      - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./data/mosquitto:/mosquitto/data
+    restart: unless-stopped
+
+  # ── Layer 3: Vector Database ────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - ./data/qdrant:/qdrant/storage
+    restart: unless-stopped
+
+  # ── Layer 3/4: Metadata Store ───────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: prahari
+      POSTGRES_PASSWORD: prahari
+      POSTGRES_DB: prahari
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # ── Layer 4: Fusion Service (API + Event Correlation) ───────
+  fusion-service:
+    build:
+      context: .
+      dockerfile: services/fusion-service/Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mosquitto
+      - qdrant
+      - postgres
+    environment:
+      - MQTT_HOST=mosquitto
+      - QDRANT_HOST=qdrant
+      - DB_HOST=postgres
+    restart: unless-stopped
+
+  # ── Layer 4: API Gateway ────────────────────────────────────
+  api-gateway:
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
+    ports:
+      - "8001:8001"
+    depends_on:
+      - mosquitto
+      - qdrant
+    environment:
+      - MQTT_HOST=mosquitto
+      - QDRANT_HOST=qdrant
+    restart: unless-stopped
+
+  # ── Layer 2: Detection Adapter (YOLOv8) ─────────────────────
+  adapter-detection:
+    build:
+      context: .
+      dockerfile: services/adapter_detection/Dockerfile
+    depends_on:
+      - mosquitto
+    environment:
+      - MQTT_HOST=mosquitto
+      - CAMERA_ID=camera-01
+      - VIDEO_SOURCE=/app/test_feeds/camera01.mp4
+    volumes:
+      - ./test_feeds:/app/test_feeds
+    restart: unless-stopped
+
+  # ── Layer 2: ANPR Adapter ───────────────────────────────────
+  adapter-anpr:
+    build:
+      context: .
+      dockerfile: services/adapter_anpr/Dockerfile
+    depends_on:
+      - mosquitto
+    environment:
+      - MQTT_HOST=mosquitto
+      - CAMERA_ID=camera-01
+      - VIDEO_SOURCE=/app/test_feeds/camera01.mp4
+    volumes:
+      - ./test_feeds:/app/test_feeds
+    restart: unless-stopped
+
+  # ── Layer 2: ReID Adapter ───────────────────────────────────
+  adapter-reid:
+    build:
+      context: .
+      dockerfile: services/adapter_reid/Dockerfile
+    depends_on:
+      - mosquitto
+      - qdrant
+    environment:
+      - MQTT_HOST=mosquitto
+      - QDRANT_HOST=qdrant
+      - CAMERA_ID=camera-01
+      - VIDEO_SOURCE=/app/test_feeds/camera01.mp4
+    volumes:
+      - ./test_feeds:/app/test_feeds
+    restart: unless-stopped
+
+  # ── Layer 2: Anomaly Adapter ────────────────────────────────
+  adapter-anomaly:
+    build:
+      context: .
+      dockerfile: services/adapter_anomaly/Dockerfile
+    depends_on:
+      - mosquitto
+    environment:
+      - MQTT_HOST=mosquitto
+      - CAMERA_ID=camera-01
+      - VIDEO_SOURCE=/app/test_feeds/camera01.mp4
+    volumes:
+      - ./test_feeds:/app/test_feeds
+    restart: unless-stopped
+
+  # ── Layer 2: Face Adapter ───────────────────────────────────
+  adapter-face:
+    build:
+      context: .
+      dockerfile: services/adapter_face/Dockerfile
+    depends_on:
+      - mosquitto
+    environment:
+      - MQTT_HOST=mosquitto
+      - CAMERA_ID=camera-01
+      - VIDEO_SOURCE=/app/test_feeds/camera01.mp4
+    volumes:
+      - ./test_feeds:/app/test_feeds
+    restart: unless-stopped
+
+  # ── Layer 4: Case File Service ──────────────────────────────
+  case-file:
+    build:
+      context: .
+      dockerfile: services/case-file/Dockerfile
+    ports:
+      - "9000:9000"
+    depends_on:
+      - mosquitto
+    environment:
+      - MQTT_HOST=mosquitto
+    volumes:
+      - ./config:/app/config
+    restart: unless-stopped
+
+  # ── Layer 4: Privacy Service ────────────────────────────────
+  privacy:
+    build:
+      context: .
+      dockerfile: services/privacy/Dockerfile
+    ports:
+      - "9001:9001"
+    depends_on:
+      - mosquitto
+    environment:
+      - MQTT_HOST=mosquitto
+    volumes:
+      - ./test_feeds:/app/test_feeds
+    restart: unless-stopped
+
+  # ── Layer 4: ONVIF Discovery Service ────────────────────────
+  onvif-discovery:
+    build:
+      context: .
+      dockerfile: services/onvif-discovery/Dockerfile
+    ports:
+      - "9002:9002"
+    volumes:
+      - ./config:/app/config
+    restart: unless-stopped
+
+  # ── Layer 4: Dashboard ──────────────────────────────────────
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:8000
+    ports:
+      - "3000:80"
+    depends_on:
+      - fusion-service
+    restart: unless-stopped

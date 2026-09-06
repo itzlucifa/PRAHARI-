@@ -1,0 +1,10 @@
+streams:
+  camera-01: exec:ffmpeg -re -i ./test_feeds/camera01.mp4 -c copy -f rtsp {output}
+  camera-02: exec:ffmpeg -re -i ./test_feeds/camera02.mp4 -c copy -f rtsp {output}
+  camera-03: exec:ffmpeg -re -i ./test_feeds/camera03.mp4 -c copy -f rtsp {output}
+
+api:
+  listen: ":1984"
+
+webrtc:
+  listen: ":8555"
