@@ -120,6 +120,14 @@ http://localhost:5173
 
 ## License
 
-Copyright (c) 2025 Sumit Nawale. All rights reserved.
+Copyright (c) 2026 Sumit Nawale
 
-PRAHARI is proprietary software. Unauthorized copying, distribution, or modification is prohibited.
+Licensed under the PRAHARI Open Use License.
+
+You are free to use, modify, and distribute this software with attribution.
+
+**Author:** Sumit Nawale  
+**LinkedIn:** https://www.linkedin.com/in/sumit-nawale-25274638b  
+**Repository:** https://github.com/itzlucifa/PRAHARI-
+
+See [LICENSE](LICENSE) for full terms.
