@@ -120,4 +120,6 @@ http://localhost:5173
 
 ## License
 
-Proprietary — PRAHARI Platform
+Copyright (c) 2025 Sumit Nawale. All rights reserved.
+
+PRAHARI is proprietary software. Unauthorized copying, distribution, or modification is prohibited.
