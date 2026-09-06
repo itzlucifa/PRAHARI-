@@ -16,9 +16,9 @@ Built by Sumit Nawale
 
 ### Live Demonstration
 
-<img src="docs/assets/demo-screenshot-1.png" width="600" alt="PRAHARI Dashboard - Live Detection">
-<img src="docs/assets/demo-screenshot-2.png" width="600" alt="PRAHARI Dashboard - Camera Feed">
-<img src="docs/assets/demo-screenshot-3.png" width="600" alt="PRAHARI Dashboard - Real-time Alerts">
+<img src="docs/assets/demo-screenshot-1.jpg" width="600" alt="PRAHARI Dashboard - Live Detection">
+<img src="docs/assets/demo-screenshot-2.jpg" width="600" alt="PRAHARI Dashboard - Camera Feed">
+<img src="docs/assets/demo-screenshot-3.jpg" width="600" alt="PRAHARI Dashboard - Real-time Alerts">
 
 ## Overview
 
