@@ -60,8 +60,8 @@ The container running on 3 test cameras today is the exact same container that w
 
 ## 6-Month Roadmap
 
-### Month 1-2: Production Hardening
-- PostgreSQL schema for persistent metadata
+### Month 1-2: Production Hardening ✅
+- PostgreSQL schema for persistent metadata ✅
 - JWT authentication for all APIs
 - Rate limiting and circuit breakers
 - Structured JSON logging
@@ -103,7 +103,7 @@ PRAHARI is built as a 4-layer architecture (UNIFY/PERCEIVE/FUSE/ACT) with produc
 | **MQTT event bus** | FUSE | paho-mqtt client integration |
 | **Qdrant vector DB** | FUSE | 512-D ReID embeddings |
 | **PostgreSQL persistence** | FUSE | SQLAlchemy models for events, alerts, cameras |
-| **React dashboard** | ACT | 7 tabs, WebSocket alerts, stats cards |
+| **React dashboard** | ACT | 9 tabs, WebSocket alerts, stats cards, AI chat, zones |
 | **Zone editor** | ACT | Polygon intrusion detection |
 | **AI chat assistant** | ACT | Natural language querying |
 | **Threat verification** | PERCEIVE | Confidence-based alert filtering |
@@ -114,6 +114,9 @@ PRAHARI is built as a 4-layer architecture (UNIFY/PERCEIVE/FUSE/ACT) with produc
 | **Demo launcher** | Scripts | Interactive demo with synthetic events |
 | **Local MQTT broker** | FUSE | From-scratch asyncio MQTT 3.1.1 |
 | **GitHub CI/CD** | DevOps | Automated testing + linting |
+| **ANPR adapter refactor** | PERCEIVE | Production-ready with relative paths |
+| **Threat verification** | PERCEIVE | Reduces false positives before alerting |
+| **Adversarial verification** | PERCEIVE | Confidence-weighted alert pipeline |
 
 ---
 
