@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updated_at": "2026-09-02T11:30:00Z",
+  "updated_at": "2026-09-06T11:30:00Z",
   "cameras": [
     {
       "camera_id": "camera-01",
@@ -14,7 +14,15 @@
       "webrtc_url": "http://127.0.0.1:8555/camera-01",
       "status": "active",
       "vendor": "simulated",
-      "notes": "Standard resolution, person + vehicle detection"
+      "notes": "Standard resolution, person + vehicle detection",
+      "zones": [
+        {
+          "zone_id": "gate-entry",
+          "name": "Gate Entry Zone",
+          "type": "intrusion",
+          "points": [[0.2, 0.3], [0.8, 0.3], [0.8, 0.7], [0.2, 0.7]]
+        }
+      ]
     },
     {
       "camera_id": "camera-02",
@@ -28,7 +36,15 @@
       "webrtc_url": "http://127.0.0.1:8555/camera-02",
       "status": "active",
       "vendor": "simulated",
-      "notes": "Low resolution, simulating old analog camera"
+      "notes": "Low resolution, simulating old analog camera",
+      "zones": [
+        {
+          "zone_id": "parking-restricted",
+          "name": "Restricted Parking",
+          "type": "no_parking",
+          "points": [[0.1, 0.2], [0.9, 0.2], [0.9, 0.8], [0.1, 0.8]]
+        }
+      ]
     },
     {
       "camera_id": "camera-03",
@@ -42,7 +58,15 @@
       "webrtc_url": "http://127.0.0.1:8555/camera-03",
       "status": "active",
       "vendor": "simulated",
-      "notes": "High resolution, simulating phone IP camera"
+      "notes": "High resolution, simulating phone IP camera",
+      "zones": [
+        {
+          "zone_id": "highway-junction",
+          "name": "Junction Zone",
+          "type": "counting",
+          "points": [[0.3, 0.4], [0.7, 0.4], [0.7, 0.6], [0.3, 0.6]]
+        }
+      ]
     }
   ]
 }

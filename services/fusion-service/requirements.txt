@@ -3,3 +3,4 @@ uvicorn[standard]
 paho-mqtt>=1.6
 qdrant-client>=1.7.0
 psycopg2-binary>=2.9.0
+sqlalchemy>=2.0.0
