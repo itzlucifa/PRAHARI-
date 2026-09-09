@@ -7,26 +7,26 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const navItems = [
   { label: 'Dashboard', icon: 'grid' },
   { label: 'Cameras', icon: 'camera' },
-  { label: 'Zones', icon: 'map' },
+  { label: 'Zones', icon: 'zones' },
   { label: 'Alerts', icon: 'bell' },
-  { label: 'ANPR', icon: 'file-text' },
-  { label: 'ReID', icon: 'users' },
-  { label: 'Case Files', icon: 'folder' },
+  { label: 'ANPR', icon: 'anpr' },
+  { label: 'ReID', icon: 'reid' },
+  { label: 'Case Files', icon: 'case' },
   { label: 'AI Chat', icon: 'chat' },
   { label: 'Settings', icon: 'settings' },
 ]
 
 function Icon({ name, className }: { name: string; className?: string }) {
   const icons: Record<string, JSX.Element> = {
-    grid: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />,
-    camera: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />,
-    bell: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />,
-    'file-text': <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />,
-    users: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />,
-    folder: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />,
-    map: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />,
-    chat: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />,
-    settings: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37.996.608 2.296.07 2.572-1.065z" />,
+    grid: <g strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><path d="M5 12h2M9 10v4M15 12h2M19 10v4" /></g>,
+    camera: <g strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" fill="none" stroke="currentColor"><path d="M2 8l6.553-3.276A1 1 0 019.553 5.618v6.764a1 1 0 01-1.447.894L4 11M9.553 6H19a2 2 0 012 2v8a2 2 0 01-2 2H9.553l-3.276 2.276A1 1 0 015 19v-6.764a1 1 0 01.447-.894L9.553 6z" /><circle cx="14" cy="11" r="2.5" fill="currentColor" /><path d="M5.5 11v.01" /></g>,
+    zones: <g strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" fill="none" stroke="currentColor"><path d="M12 2l8 4v8l-8 8-8-8V6l8-4zM6 8l6 4 6-4M8 6l4 2.5M12 2v20" /><circle cx="12" cy="8" r="1.5" fill="currentColor" /></g>,
+    bell: <g strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" fill="none" stroke="currentColor"><path d="M12 22c2.21 0 4-1.79 4-4H8c0 2.21 2.79 4 4 4z" /><path d="M18 11V7a6 6 0 00-12 0v4l-2 2v2h16v-2l-2-2z" /></g>,
+    anpr: <g strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" fill="none" stroke="currentColor"><rect x="3" y="7" width="18" height="10" rx="1.5" /><path d="M6 11h2M10 11h2M14 11h2M18 11h2M6 14h12" /><rect x="7" y="9" width="2" height="2" rx="0.3" fill="currentColor" /><rect x="13" y="9" width="2" height="2" rx="0.3" fill="currentColor" /></g>,
+    reid: <g strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" fill="none" stroke="currentColor"><path d="M5 20c4-4 10-6 14-6" /><circle cx="9" cy="7" r="3" /><circle cx="9" cy="7" r="6" strokeDasharray="1 3" fill="none" /><path d="M15 7l3 3M18 7l-3 3" /></g>,
+    case: <g strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" fill="none" stroke="currentColor"><path d="M3 6h18v12a2 2 0 01-2 2H7a2 2 0 01-2-2V6z" /><path d="M8 2h8v4H8zM12 10v8m-4-4h8" /></g>,
+    chat: <g strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" fill="none" stroke="currentColor"><path d="M12 2H5a2 2 0 00-2 2v10a2 2 0 002 2h4l5 5V4a2 2 0 012-2h3" /><circle cx="16" cy="8" r="1" fill="currentColor" /><circle cx="19" cy="8" r="1" fill="currentColor" /></g>,
+    settings: <g strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3" /><path d="M12 1v6m0 10v6M4.22 4.22l4.24 4.24m7.52 7.52l4.24 4.24M1 12h6m10 0h6M4.22 19.78l4.24-4.24m7.52-7.52l4.24-4.24" /></g>,
   }
   return <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">{icons[name]}</svg>
 }
