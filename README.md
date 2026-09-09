@@ -9,10 +9,11 @@ Built by [Sumit Nawale](https://www.linkedin.com/in/sumit-nawale-25274638b)
 ---
 
 [![License](https://img.shields.io/badge/license-Custom%20Open%20Use-blue.svg)](LICENSE)
+[![CI](https://github.com/itzlucifa/PRAHARI-/actions/workflows/ci.yml/badge.svg)](https://github.com/itzlucifa/PRAHARI-/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.10%2B-green.svg)](https://www.python.org/)
-[![Node](https://img.shields.io/badge/node-18%2B-green.svg)](https://nodejs.org/)
+[![React](https://img.shields.io/badge/react-18-61DAFB.svg)](https://react.dev/)
 [![Docker](https://img.shields.io/badge/docker-compose-ready-blue.svg)](https://docs.docker.com/compose/)
-[![Status](https://img.shields.io/badge/status-production%20ready-success.svg)](https://github.com/itzlucifa/PRAHARI-)
+[![Status](https://img.shields.io/badge/status-v0.3.0%20production-success.svg)](https://github.com/itzlucifa/PRAHARI-)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![Demo](https://img.shields.io/badge/demo-youtube-red.svg)](https://www.youtube.com/watch?v=_xu8fuoak5k)
 
