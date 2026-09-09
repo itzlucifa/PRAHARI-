@@ -332,7 +332,101 @@ Before an event becomes an alert:
 | Dashboard | 5173 | ✅ Running |
 | Demo Injector | — | ✅ Injecting events |
 
-## 14. Contact
+## 14. GitHub Repository Improvements
+
+### CI/CD Pipeline
+- **GitHub Actions** (`.github/workflows/ci.yml`):
+  - Python syntax checks (FastAPI, adapters, shared modules)
+  - Dashboard TypeScript check (`npx tsc --noEmit`)
+  - Docker Compose YAML validation
+  - Runs on every push and pull request
+
+### Issue & PR Templates
+- `bug_report.md` — structured bug reporting
+- `feature_request.md` — feature suggestion template
+- `PULL_REQUEST_TEMPLATE.md` — PR checklist with testing verification
+
+### Governance Documents
+- `SECURITY.md` — security policy, vulnerability reporting, deployment security checklist
+- `CONTRIBUTING.md` — development setup, coding standards, contribution workflow
+- `LICENSE` — Custom Open Use License with attribution requirement (2026, Sumit Nawale)
+- `.gitignore` — production-grade ignore rules (caches, binaries, models, test feeds)
+
+### Repository Structure Cleanup
+- Reorganized into clean layers: `scripts/`, `models/`, `docs/`, `assets/`
+- Removed duplicate files: duplicate DEMO docs, duplicate model weights, duplicate DummyAdapter
+- Removed orphaned `__pycache__` folders throughout
+- Fixed misplaced files (utility scripts moved from `tests/` to `scripts/`)
+- Added missing `__init__.py` files to all service packages
+- Created missing Dockerfiles for case-file, privacy, onvif-discovery services
+
+### Documentation Suite
+- `README.md` — project overview, badges, screenshots, YouTube demo link
+- `VISION.md` — this file, complete technical brain
+- `docs/ARCHITECTURE.md` — 4-layer architecture deep dive
+- `docs/DEVELOPER_GUIDE.md` — setup, coding standards, adding adapters
+- `docs/SERVICE_REFERENCE.md` — all API endpoints, services, MQTT topics
+- `docs/DEPLOYMENT.md` — Docker, environment variables, production checklist
+- `docs/DEMO_PLAN.md` — 5-7 minute demo script
+- `docs/DEMO_README.md` — quick demo guide
+- `docs/scale-one-pager.md` — compute-gated cost model (₹40/cam/month at 80K)
+
+## 15. Code Quality Improvements
+
+### Python
+- Removed all hardcoded Windows paths (`C:\Users\asus\...`)
+- Replaced with relative paths via `os.path.join` and `PROJECT_ROOT`
+- Added proper error handling with graceful fallbacks
+- Removed AI-generated verbose output (emoji, banner prints)
+- Fixed broken test assertions and imports
+
+### TypeScript/React
+- Added TypeScript interfaces for all data types
+- Fixed connection status: REST API is source of truth, not WebSocket
+- Added WebSocket retry logic with exponential backoff
+- Added 3-second WebSocket connection timeout
+- Added Zones tab with polygon visualization
+- Added AI Chat tab with example queries
+
+### Infrastructure
+- Resolved port conflict: api-gateway changed from 8000 → 8001
+- Fixed mosquitto websocket port from 9001 → 9003
+- Added 6 missing services to docker-compose.yml
+
+## 16. Testing & Verification
+
+### Endpoint Tests (all passing)
+| Endpoint | Method | Status |
+|----------|--------|--------|
+| /health | GET | ✅ Returns `{"status":"ok"}` |
+| /events | GET | ✅ Returns events from DB or memory |
+| /cameras | GET | ✅ Returns camera registry |
+| /zones | GET | ✅ Returns polygon zones |
+| /alerts | GET | ✅ Returns alert list |
+| /chat/query | POST | ✅ Returns natural language reply |
+| /verify/threat | POST | ✅ Returns verification result |
+| /zones/check-intrusion | POST | ✅ Point-in-polygon detection |
+| /search/semantic | POST | ✅ Vector similarity search |
+| /ws/alerts | WebSocket | ✅ Real-time alert stream |
+
+### Build Verification
+- Python syntax: `py_compile` passes for all service files
+- TypeScript: `npx tsc --noEmit` passes with no errors
+- Docker Compose: Valid YAML with 15 services
+
+## 17. Live Demo
+
+**YouTube:** [Watch the full demo](https://www.youtube.com/watch?v=_xu8fuoak5k)
+
+### Live Services (dev environment)
+| Service | Port | Status |
+|---------|------|--------|
+| Fusion API | 8000 | ✅ Running |
+| MQTT Broker | 1883 | ✅ Running |
+| Dashboard | 5173 | ✅ Running |
+| Demo Injector | — | ✅ Injecting events |
+
+## 18. Contact
 
 **Built by:** Sumit Nawale  
 **LinkedIn:** https://www.linkedin.com/in/sumit-nawale-25274638b  
