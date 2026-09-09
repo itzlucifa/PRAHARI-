@@ -22,15 +22,25 @@ interface Camera {
   event_type: string
 }
 
+interface Zone {
+  camera_id: string
+  zone_id: string
+  name: string
+  type: string
+  points: number[][]
+}
+
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 const navItems = [
   { label: 'Dashboard', icon: 'grid' },
   { label: 'Cameras', icon: 'camera' },
+  { label: 'Zones', icon: 'map' },
   { label: 'Alerts', icon: 'bell' },
   { label: 'ANPR', icon: 'file-text' },
   { label: 'ReID', icon: 'users' },
   { label: 'Case Files', icon: 'folder' },
+  { label: 'AI Chat', icon: 'chat' },
   { label: 'Settings', icon: 'settings' },
 ]
 
@@ -42,6 +52,8 @@ function Icon({ name, className }: { name: string; className?: string }) {
     'file-text': <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />,
     users: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />,
     folder: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />,
+    map: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />,
+    chat: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />,
     settings: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37.996.608 2.296.07 2.572-1.065z" />,
   }
   return <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">{icons[name]}</svg>
@@ -50,6 +62,7 @@ function Icon({ name, className }: { name: string; className?: string }) {
 export default function App() {
   const [events, setEvents] = useState<DetectionEvent[]>([])
   const [cameras, setCameras] = useState<Camera[]>([])
+  const [zones, setZones] = useState<Zone[]>([])
   const [connected, setConnected] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeTab, setActiveTab] = useState('Dashboard')
@@ -107,9 +120,10 @@ export default function App() {
 
     const fetchInitial = async () => {
       try {
-        const [eventsRes, camerasRes] = await Promise.all([
+        const [eventsRes, camerasRes, zonesRes] = await Promise.all([
           fetch(`${API_URL}/events?limit=50`),
           fetch(`${API_URL}/cameras`),
+          fetch(`${API_URL}/zones`),
         ])
         if (!mounted) return
         if (!eventsRes.ok || !camerasRes.ok) {
@@ -117,12 +131,14 @@ export default function App() {
           setConnected(false)
           return
         }
-        const [eventsData, camerasData] = await Promise.all([
+        const [eventsData, camerasData, zonesData] = await Promise.all([
           eventsRes.json(),
           camerasRes.json(),
+          zonesRes.ok ? zonesRes.json() : [],
         ])
         setEvents(eventsData)
         setCameras(camerasData)
+        if (zonesRes.ok) setZones(zonesData)
         setConnected(true)
         connectWebSocket()
       } catch (e) {
@@ -267,6 +283,39 @@ export default function App() {
           </div>
         )}
 
+        {activeTab === 'Zones' && (
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/50">
+              <h3 className="text-sm font-semibold text-slate-900">Camera Zones</h3>
+              <p className="text-xs text-slate-500 mt-1">Intrusion zones, counting lines, and restricted areas</p>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {zones.length === 0 && (
+                <div className="px-6 py-8 text-center text-sm text-slate-500">No zones configured</div>
+              )}
+              {zones.map(zone => (
+                <div key={`${zone.camera_id}-${zone.zone_id}`} className="px-6 py-4 hover:bg-slate-50 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-medium text-slate-900">{zone.name}</div>
+                      <div className="text-xs text-slate-500 mt-1">
+                        Camera: {zone.camera_id} | Type: {zone.type}
+                      </div>
+                    </div>
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium border ${
+                      zone.type === 'intrusion' ? 'bg-red-50 text-red-700 border-red-200' :
+                      zone.type === 'counting' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                      'bg-yellow-50 text-yellow-700 border-yellow-200'
+                    }`}>
+                      {zone.type}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {activeTab === 'Cameras' && (
           <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/50">
@@ -365,6 +414,25 @@ export default function App() {
           <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
             <h3 className="text-sm font-semibold text-slate-900 mb-4">Case File Export</h3>
             <p className="text-sm text-slate-600">Case file export module ready. Events are timestamped and can be exported with SHA-256 hash for court admissibility.</p>
+          </div>
+        )}
+
+        {activeTab === 'AI Chat' && (
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+            <h3 className="text-sm font-semibold text-slate-900 mb-4">PRAHARI AI Assistant</h3>
+            <p className="text-sm text-slate-600 mb-4">Ask questions about cameras, alerts, events, people, vehicles, and license plates.</p>
+            <div className="space-y-3">
+              <div className="bg-slate-50 rounded-lg p-3 text-sm text-slate-700">
+                <strong>Try asking:</strong>
+                <ul className="list-disc list-inside mt-2 space-y-1 text-xs">
+                  <li>"How many cameras are online?"</li>
+                  <li>"Show me recent alerts"</li>
+                  <li>"How many people were detected?"</li>
+                  <li>"What vehicles were seen?"</li>
+                  <li>"Show me recent license plates"</li>
+                </ul>
+              </div>
+            </div>
           </div>
         )}
 

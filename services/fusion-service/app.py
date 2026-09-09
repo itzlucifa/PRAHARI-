@@ -63,7 +63,8 @@ anpr_index: dict[str, list[dict]] = defaultdict(list)
 
 def get_db():
     if not DB_AVAILABLE or SessionLocal is None:
-        return None
+        yield None
+        return
     db = SessionLocal()
     try:
         yield db
@@ -405,20 +406,13 @@ def point_in_polygon(point, polygon):
     x, y = point
     n = len(polygon)
     inside = False
-    p1x, p1y = polygon[0]
-    for i in range(n + 1):
-        p2x, p2y = polygon[i % n]
-        if y > min(p1y, p2y):
-            if y <= max(p1y, p2y):
-                if x <= max(p1x, p2x):
-                    if p1x != p2x:
-                        xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
-                    if p1y == p2y or y <= max(p1y, p2y):
-                        if x <= xinters:
-                            inside = not inside
-                        elif x < xinters:
-                            inside = not inside
-        p1x, p1y = p2x, p2y
+    j = n - 1
+    for i in range(n):
+        xi, yi = polygon[i]
+        xj, yj = polygon[j]
+        if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi + 1e-30) + xi):
+            inside = not inside
+        j = i
     return inside
 
 
@@ -528,55 +522,45 @@ async def verify_threat(payload: dict):
 @app.post("/chat/query")
 async def chat_query(payload: dict):
     query = payload.get("query", "").lower()
-    db = None
-    if DB_AVAILABLE and SessionLocal is not None:
-        db = SessionLocal()
+    reply = "I can answer questions about cameras, alerts, events, people, vehicles, and license plates. Try asking: 'How many cameras are online?' or 'Show me recent alerts'."
     try:
         if "camera" in query or "cameras" in query:
-            if db is not None:
+            try:
+                db = SessionLocal()
                 cameras = db.query(Camera).all()
                 reply = f"There are {len(cameras)} registered cameras: " + ", ".join(c.id for c in cameras)
-            else:
-                reply = f"There are {len(cameras)} registered cameras: " + ", ".join(c.get("camera_id") for c in cameras)
+                db.close()
+            except Exception:
+                import json as _json
+                config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "config", "camera-registry.json")
+                try:
+                    with open(config_path) as f:
+                        registry = _json.load(f)
+                    cams = registry.get("cameras", [])
+                    reply = f"There are {len(cams)} registered cameras: " + ", ".join(c.get("camera_id") for c in cams)
+                except Exception:
+                    pass
         elif "alert" in query or "alerts" in query:
-            if db is not None:
-                alerts = db.query(Alert).filter(Alert.status == "open").limit(5).all()
-                reply = f"There are {len(alerts)} open alerts."
-            else:
-                reply = "Database not available. Alerts require PostgreSQL."
+            with latest_events_lock:
+                alerts = [e for e in latest_events if e.get("confidence", 0) > 0.7]
+                reply = f"There are {len(alerts)} high-confidence alert events."
         elif "event" in query or "events" in query:
-            if db is not None:
-                events = db.query(Event).order_by(Event.received_at.desc()).limit(5).all()
-                reply = "Recent events: " + ", ".join(e.event_type for e in events)
-            else:
-                with latest_events_lock:
-                    recent = sorted(latest_events, key=lambda x: x.get("_received_at", 0), reverse=True)[:5]
-                reply = "Recent events: " + ", ".join(e.get("event_type") for e in recent)
+            with latest_events_lock:
+                recent = sorted(latest_events, key=lambda x: x.get("_received_at", 0), reverse=True)[:5]
+            reply = "Recent events: " + ", ".join(e.get("event_type") for e in recent)
         elif "person" in query or "people" in query:
-            if db is not None:
-                count = db.query(Event).filter(Event.event_type == "detection", Event.entity_type == "person").count()
-            else:
+            with latest_events_lock:
                 count = sum(1 for e in latest_events if e.get("event_type") == "detection" and e.get("entity_type") == "person")
-            reply = f"There are {count} person detection events in the system."
+            reply = f"There are {count} person detection events."
         elif "vehicle" in query or "car" in query:
-            if db is not None:
-                count = db.query(Event).filter(Event.event_type == "detection", Event.entity_type == "vehicle").count()
-            else:
+            with latest_events_lock:
                 count = sum(1 for e in latest_events if e.get("event_type") == "detection" and e.get("entity_type") == "vehicle")
-            reply = f"There are {count} vehicle detection events in the system."
+            reply = f"There are {count} vehicle detection events."
         elif "plate" in query or "anpr" in query or "license" in query:
-            if db is not None:
-                plates = db.query(Event).filter(Event.event_type == "anpr_read").limit(5).all()
-                reply = "Recent plates: " + ", ".join(e.plate_text for e in plates if e.plate_text)
-            else:
+            with latest_events_lock:
                 plates = [e for e in latest_events if e.get("event_type") == "anpr_read"][:5]
-                reply = "Recent plates: " + ", ".join(e.get("plate_text") for e in plates if e.get("plate_text"))
-        else:
-            reply = "I can answer questions about cameras, alerts, events, people, vehicles, and license plates. Try asking: 'How many cameras are online?' or 'Show me recent alerts'."
-        return {"reply": reply}
+            reply = "Recent plates: " + ", ".join(e.get("plate_text") for e in plates if e.get("plate_text"))
     except Exception as exc:
         logger.error("Chat query failed: %s", exc)
-        return {"reply": "Sorry, I encountered an error processing your query."}
-    finally:
-        if db:
-            db.close()
+        reply = "Sorry, I encountered an error processing your query."
+    return {"reply": reply}

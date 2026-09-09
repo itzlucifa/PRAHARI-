@@ -16,6 +16,13 @@ try:
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     Base = declarative_base()
     DB_AVAILABLE = True
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception:
+        logger.warning("PostgreSQL not available, falling back to in-memory")
+        DB_AVAILABLE = False
 except Exception as exc:
     logger.warning("Database engine init failed: %s", exc)
     DB_AVAILABLE = False
