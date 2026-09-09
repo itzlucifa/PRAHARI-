@@ -426,7 +426,91 @@ Before an event becomes an alert:
 | Dashboard | 5173 | ✅ Running |
 | Demo Injector | — | ✅ Injecting events |
 
-## 18. Contact
+## 18. Competitive Analysis
+
+### Landscape Overview
+
+| Project | Stars | Focus | Key Features |
+|---------|-------|-------|--------------|
+| DeepCamera (SharpAI) | 7k+ | Consumer AI cameras | VLM video analysis, LLM agent, Telegram/Discord, Aegis desktop app |
+| Nurby (Eshpelin) | — | Home security | Multi-agent pipeline, canvas zone editor, MCP server |
+| VisionAI-Aegis | 1 | Enterprise SOC | 12 AI agents, adversarial verifier, escalation chains, trajectory prediction |
+| Sentigon (Sherin-SEF-AI) | — | Offline SOC | Local-first, adversarial verifier, 12-agent fleet, one-command install |
+| Overseer (emrezvez) | — | Map-based monitoring | World map UI, DINOv2 appearance search, agentic chat |
+| Locus Vision (Kongesque) | 8 | Edge optimization | Raspberry Pi/EdgeTPU, INT8 quantization, SvelteKit frontend |
+| SmartSurv | — | Low-latency | WebRTC (<100ms), ONNX compilation (3x speed), privacy guard |
+| Lumenta (Bhargav) | — | Hackathon | Multi-agent pipeline, Twilio/MCP integrations, incident severity |
+| EDEN (OmSethi) | — | Hackathon winner | 25+ camera feeds, 3D campus map, YOLOv8 + Gemini |
+| Securade.ai HUB | 280 | Zero-shot enterprise | Zero-shot learning, generative model training, PPE detection |
+
+### Feature Comparison Matrix
+
+| Feature | PRAHARI | DeepCamera | Nurby | Sentigon | Overseer | Locus Vision |
+|---------|---------|------------|-------|----------|----------|--------------|
+| Multi-agent pipeline | Partial (chat) | ✅ | ✅ | ✅ (12 agents) | ✅ | Partial |
+| Adversarial verifier | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| Canvas zone editor | ✅ Added (this release) | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Hardware auto-detect | ✅ Added (this release) | ✅ | ✅ | ✅ | ❌ | ✅ |
+| ONNX optimization | ✅ Added (this release) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| WebRTC streaming | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Offline-first | Partial | ✅ | ✅ | ✅ | ✅ | ✅ |
+| MCP integrations | ❌ | ❌ | ✅ | ✅ | ✅ | ❌ |
+| One-command install | ✅ Added (this release) | ❌ | ❌ | ✅ | ❌ | ❌ |
+| CLIP search | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Agentic chat | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Cross-camera ReID | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Compute-gated AI | ✅ (unique) | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Vendor-agnostic | ✅ | ✅ | Limited | ✅ | ✅ | Limited |
+
+### Competitive Advantages of PRAHARI
+
+1. **Compute-Gated Economics** — PRAHARI's core innovation is compute-gated AI that reduces cost from ₹200/cam/month to ₹40/cam/month at 80K camera scale. No other project solves the cost problem at scale.
+
+2. **Vendor-Agnostic** — Connects to any ONVIF-compatible camera without vendor lock-in. Most projects are tied to specific hardware.
+
+3. **Court-Admissible Data** — SHA-256 hashing and timestamping built into the schema. Essential for legal proceedings.
+
+4. **Indian Market Optimization** — Specifically designed for Indian conditions with ANPR (EasyOCR) and regional camera support.
+
+### Improvement Opportunities Identified
+
+| Opportunity | Source Project | Priority |
+|-------------|---------------|----------|
+| Multi-agent orchestration layer | Sentigon (12 agents) | Medium |
+| WebRTC streaming | SmartSurv | Short-term |
+| MCP server for integrations | Nurby, Lumenta | Short-term |
+| Trajectory prediction | VisionAI-Aegis | Long-term |
+| Local LLM via Ollama | DeepCamera | Short-term |
+| Batch video processing | Locus Vision | Short-term |
+| Desktop companion app | DeepCamera/Aegis | Long-term |
+
+## 19. Recent Improvements (This Release)
+
+### One-Command Installer
+- `scripts/install.sh` and `scripts/install.bat` automate full dependency installation
+- Detects system prerequisites, installs Python/npm/Docker dependencies
+- Optionally starts Docker services (PostgreSQL, Qdrant, Mosquitto, Redis)
+- Runs hardware detection automatically
+- Works cross-platform (Linux, macOS, Windows)
+
+### Visual Zone Editor
+- `dashboard/src/components/ZoneEditor.tsx` — Canvas-based zone drawing tool
+- Interactive polygon drawing for intrusion, counting, and no-parking zones
+- Zone editing, deletion, and per-zone configuration
+- Integrated into the Zones tab with per-camera editors
+
+### Hardware Auto-Detection
+- `scripts/detect_hardware.py` — Detects GPU/CUDA/TensorRT/CoreML/Coral TPU
+- Recommends optimal ONNX model format per hardware (auto, coreml, cuda, etc.)
+- Supports JSON output for programmatic integration
+
+### ONNX Model Optimization
+- `scripts/optimize_onnx.py` — Converts PyTorch models to ONNX
+- Applies optimization passes (constant folding, fusion, transpose elimination)
+- Supports FP16 half-precision and 8-bit quantization
+- Built-in benchmarking with FPS measurement
+
+## 20. Contact
 
 **Built by:** Sumit Nawale  
 **LinkedIn:** https://www.linkedin.com/in/sumit-nawale-25274638b  

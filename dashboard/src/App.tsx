@@ -1,34 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
-
-interface DetectionEvent {
-  event_id: string
-  camera_id: string
-  timestamp: string
-  event_type: 'detection' | 'anomaly' | 'anpr_read' | 'reid_match' | 'face_match'
-  entity_type: 'person' | 'vehicle' | 'object'
-  bbox: { x: number; y: number; w: number; h: number }
-  confidence: number
-  track_id: string
-  embedding_id?: string
-  plate_text?: string
-  anomaly_label?: string
-  source_repo: string
-  requires_authorization: boolean
-}
-
-interface Camera {
-  camera_id: string
-  last_seen: string
-  event_type: string
-}
-
-interface Zone {
-  camera_id: string
-  zone_id: string
-  name: string
-  type: string
-  points: number[][]
-}
+import ZoneEditor from './components/ZoneEditor'
+import { DetectionEvent, Camera, Zone } from './types'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -63,6 +35,7 @@ export default function App() {
   const [events, setEvents] = useState<DetectionEvent[]>([])
   const [cameras, setCameras] = useState<Camera[]>([])
   const [zones, setZones] = useState<Zone[]>([])
+  const [editingCameraId, setEditingCameraId] = useState<string | null>(null)
   const [connected, setConnected] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeTab, setActiveTab] = useState('Dashboard')
@@ -284,35 +257,67 @@ export default function App() {
         )}
 
         {activeTab === 'Zones' && (
-          <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/50">
-              <h3 className="text-sm font-semibold text-slate-900">Camera Zones</h3>
-              <p className="text-xs text-slate-500 mt-1">Intrusion zones, counting lines, and restricted areas</p>
-            </div>
-            <div className="divide-y divide-slate-100">
-              {zones.length === 0 && (
-                <div className="px-6 py-8 text-center text-sm text-slate-500">No zones configured</div>
-              )}
-              {zones.map(zone => (
-                <div key={`${zone.camera_id}-${zone.zone_id}`} className="px-6 py-4 hover:bg-slate-50 transition-colors">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm font-medium text-slate-900">{zone.name}</div>
-                      <div className="text-xs text-slate-500 mt-1">
-                        Camera: {zone.camera_id} | Type: {zone.type}
+          <div className="space-y-6">
+            {editingCameraId ? (
+              <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-semibold text-slate-900">Zone Editor — Camera {editingCameraId}</h3>
+                  <button
+                    onClick={() => setEditingCameraId(null)}
+                    className="px-3 py-2 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                  >
+                    ← Back to Zones
+                  </button>
+                </div>
+                <ZoneEditor
+                  cameraId={editingCameraId}
+                  zones={zones.filter(z => z.camera_id === editingCameraId)}
+                  onSave={(updatedZones) => {
+                    setZones(prev => {
+                      const filtered = prev.filter(z => z.camera_id !== editingCameraId)
+                      return [...filtered, ...updatedZones]
+                    })
+                    setEditingCameraId(null)
+                  }}
+                  onCancel={() => setEditingCameraId(null)}
+                />
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-bold text-slate-900">Zones</h2>
+                </div>
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                  <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/50">
+                    <h3 className="text-sm font-semibold text-slate-900">Camera Zones</h3>
+                    <p className="text-xs text-slate-500 mt-1">Intrusion zones, counting lines, and restricted areas</p>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {zones.length === 0 && (
+                      <div className="px-6 py-8 text-center text-sm text-slate-500">No zones configured</div>
+                    )}
+                    {cameras.map(camera => (
+                      <div key={camera.camera_id} className="px-6 py-4 hover:bg-slate-50 transition-colors">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-sm font-medium text-slate-900">{camera.camera_id}</div>
+                            <div className="text-xs text-slate-500 mt-1">
+                              Zone editor: draw intrusion zones, counting lines, no-parking areas
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => setEditingCameraId(camera.camera_id)}
+                            className="px-3 py-2 text-xs text-blue-700 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors border border-blue-200"
+                          >
+                            Edit Zones
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium border ${
-                      zone.type === 'intrusion' ? 'bg-red-50 text-red-700 border-red-200' :
-                      zone.type === 'counting' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                      'bg-yellow-50 text-yellow-700 border-yellow-200'
-                    }`}>
-                      {zone.type}
-                    </span>
+                    ))}
                   </div>
                 </div>
-              ))}
-            </div>
+              </>
+            )}
           </div>
         )}
 
