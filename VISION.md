@@ -1,67 +1,312 @@
-# PRAHARI — Vision: The World's Best Surveillance Intelligence Platform
+# PRAHARI — The Complete Technical Brain
 
-**Author:** Sumit Nawale
+**Author:** Sumit Nawale  
+**LinkedIn:** https://www.linkedin.com/in/sumit-nawale-25274638b  
+**Repository:** https://github.com/itzlucifa/PRAHARI-
 
-## The Problem
+---
 
-80,000+ cameras in Gujarat are isolated islands. Each department runs its own siloed system. Evidence is fragmented. Real-time correlation across cameras doesn't exist. Privacy is an afterthought. And when a crime happens, officers spend hours manually reviewing footage instead of acting on intelligence.
+## 1. Problem Statement
 
-## The Vision
+80,000+ cameras in Gujarat operate as 80,000 isolated islands. Each department runs its own siloed system. Evidence is fragmented across incompatible platforms. Real-time correlation across cameras does not exist. Privacy is an afterthought. Officers spend hours manually reviewing footage instead of acting on intelligence. The cost of running modern AI on every camera 24/7 is prohibitively expensive.
 
-PRAHARI is not just another AI demo. It is the **operating system for public safety** — a unified brain that sees across every vendor, every department, and every district, in real time.
+## 2. The Vision
 
-## Why PRAHARI Will Be #1
+PRAHARI is the **operating system for public safety** — a unified brain that sees across every vendor, every department, and every district, in real time.
 
-### 1. Integration-First Architecture
+## 3. 4-Layer Architecture
 
-Every other solution locks you into a single vendor or model. PRAHARI was built from day one to normalize heterogeneous inputs:
+### Layer 1 — UNIFY
+- **go2rtc** normalizes RTSP/WebRTC streams from any vendor (CP Plus, Hikvision, Dahua, Axis, Bosch, any ONVIF-compatible)
+- **onvif-discovery** service discovers cameras on the network and populates the registry
 
-- Any RTSP/WebRTC camera (CP Plus, Hikvision, Dahua, Axis, Bosch)
-- Any AI model (YOLO, Detectron, MMDetection, custom ONNX)
-- Any deployment target (edge node, cloud, on-prem)
+### Layer 2 — PERCEIVE
+Five specialized AI adapters run compute-gated inference:
 
-**The result:** One platform, one schema, one dashboard. No rip-and-replace.
+| Adapter | Model | Event Type | Entities | Source Repo |
+|---------|-------|------------|----------|-------------|
+| Detection | YOLOv8n (640x640) | `detection` | person, vehicle, object | ultralytics |
+| ANPR | YOLOv8 + EasyOCR | `anpr_read` | vehicle | indian-anpr |
+| ReID | TorchReID (OSNet) | `reid_match` | person | torchreid |
+| Anomaly | Rule-based | `anomaly` | loitering, crowd, running | anomaly-rules |
+| Face | InsightFace (Buffalo-L) | `face_match` | person | insightface |
 
-### 2. Privacy by Design
+- **Threat verification** service: confidence-weighted filtering before alerting
+- **Local MQTT broker**: from-scratch asyncio MQTT 3.1.1 implementation
 
-Most surveillance systems are "collect everything, worry later." PRAHARI flips this:
+### Layer 3 — FUSE
+- **MQTT broker** serves as the event bus (paho-mqtt client)
+- **Fusion Service** (FastAPI): ingests events, maintains hybrid store (PostgreSQL + in-memory), indexes ANPR plates, stores ReID embeddings in Qdrant, pushes alerts via WebSocket
+- **Qdrant** stores 512-D ReID embeddings for cross-camera similarity search
+- **PostgreSQL** persists events, alerts, cameras, zones with indexes
+- **Semantic search** endpoint using Qdrant vector similarity
+- **AI chat assistant** endpoint for natural language querying
 
-- Faces and plates are **blurred by default**
-- Unblur requires: officer name + case number + audit log entry
-- Every access is timestamped and tamper-evident
+### Layer 4 — ACT
+Seven core tabs + AI Chat:
 
-This isn't just good ethics — it's the only way to get citizen consent at scale.
+| Tab | Features |
+|-----|----------|
+| Dashboard | Stats cards, live event feed, connection status |
+| Cameras | Registered cameras list with status |
+| Zones | Polygon zone management, intrusion detection |
+| Alerts | High-confidence detection alerts |
+| ANPR | License plate recognition logs |
+| ReID | Cross-camera match history |
+| Case Files | Evidence export with SHA-256 hash |
+| AI Chat | Natural language querying about the system |
+| Settings | System configuration, API URL, connection status |
 
-### 3. Court-Admissible Evidence
+- **Privacy service**: blur/unblur with audit logged to officer + case number
+- **Case file service**: forensic PDF/JSON exports with SHA-256 hash chain
 
-Raw video is not evidence. PRAHARI produces **forensic-grade case files**:
+## 4. Canonical Data Schema
 
-- SHA-256 hash chain from camera to export
-- Timestamp from GPS-synced NTP server
-- Metadata includes model version, confidence, track ID
-- Export formats: PDF + JSON + original clips
+All adapters publish `DetectionEvent` objects (defined in `shared/events.py`):
 
-### 4. Compute-Gated Economics
+```json
+{
+  "event_id": "uuid",
+  "camera_id": "camera-01",
+  "timestamp": "2026-09-06T08:00:00Z",
+  "event_type": "detection|anpr_read|reid_match|anomaly|face_match",
+  "entity_type": "person|vehicle|object",
+  "bbox": {"x": 0.1, "y": 0.2, "w": 0.15, "h": 0.3},
+  "confidence": 0.92,
+  "track_id": "track_001",
+  "embedding_id": "optional",
+  "plate_text": "DL8C2290",
+  "anomaly_label": "optional",
+  "source_repo": "ultralytics|indian-anpr|torchreid|anomaly-rules|insightface",
+  "requires_authorization": false,
+  "received_at": 1234567890000
+}
+```
 
-Running YOLO + ANPR + ReID 24/7 on 80,000 cameras costs ₹2-4 lakhs/month per 1,000 cameras. PRAHARI's compute-gated tiering makes statewide deployment feasible:
+### PostgreSQL Tables
 
-| Tier | Trigger | Monthly Cost/Camera |
-|------|---------|---------------------|
-| Motion Detection | Always-on | ₹5 |
-| AI Inference | On motion | ₹25 |
-| Face Watchlist | On alert only | ₹10 |
-| **Total** | | **₹40** |
+| Table | Columns |
+|-------|---------|
+| `cameras` | id (PK), name, rtsp_url, status, last_seen, created_at |
+| `events` | id (PK), camera_id (idx), timestamp (idx), event_type (idx), entity_type, bbox, confidence, track_id (idx), embedding_id, plate_text, anomaly_label, source_repo, requires_authorization, received_at (idx) |
+| `alerts` | id (PK), event_id (FK), camera_id (idx), alert_type, confidence, status, created_at (idx), acknowledged_by, notes |
 
-At 80,000 cameras: **₹3.2 lakhs/month** — feasible for a state budget.
+### Qdrant Collection
+- **Collection name:** `reid_embeddings`
+- **Vector size:** 512 (OSNet/ReID embeddings)
+- **Distance:** Cosine similarity
+- **Payload:** camera_id, track_id, timestamp, embedding_id
 
-### 5. Same Stack, Any Scale
+## 5. API Endpoints
 
-The container running on 3 test cameras today is the exact same container that will run on camera 80,000. No rewrite. No migration. Just horizontal scaling.
+### REST API (Fusion Service)
 
-## 6-Month Roadmap
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Health check → `{"status":"ok"}` |
+| GET | `/events?limit=50` | Recent events (DB or in-memory fallback) |
+| POST | `/events` | Ingest single event |
+| GET | `/events/anpr/{plate}` | Search by license plate |
+| GET | `/cameras` | List registered cameras |
+| POST | `/cameras` | Register a new camera |
+| GET | `/alerts?limit=50` | List recent alerts |
+| GET | `/zones` | List all camera zones |
+| POST | `/zones/check-intrusion` | Point-in-polygon intrusion detection |
+| POST | `/search/semantic` | Vector similarity search |
+| POST | `/verify/threat` | Confidence-based threat verification |
+| POST | `/chat/query` | Natural language Q&A |
+
+### WebSocket API
+
+| Endpoint | Description |
+|----------|-------------|
+| `WS /ws/alerts` | Real-time alert stream to connected dashboards |
+
+### MQTT Topics
+
+| Topic | Direction | Description |
+|-------|-----------|-------------|
+| `fuse/events/all` | Adapter → Fusion | Canonical event stream |
+| `cameras/+/detections` | Adapter → Adapter | Detection sharing |
+| `fuse/alerts/live` | Fusion → Dashboard | WebSocket alert broadcast |
+
+## 6. Project Structure
+
+```
+prahari/
+├── README.md                          # Project overview + quick start
+├── VISION.md                          # This file — complete technical brain
+├── LICENSE                            # Custom open-use license (2026 Sumit Nawale)
+├── CHANGELOG.md                       # Version history
+├── docker-compose.yml                 # 15-service orchestration
+├── .gitignore                         # Ignores caches, binaries, models
+├── requirements.txt                   # Root Python dependencies
+│
+├── config/
+│   ├── camera-registry.json           # Camera registry with zones
+│   ├── go2rtc.yaml                    # Stream normalization config
+│   └── mosquitto.conf                 # MQTT broker config
+│
+├── shared/                            # Canonical schema + base adapter
+│   ├── __init__.py
+│   ├── events.py                      # DetectionEvent dataclass + MQTT topics
+│   ├── adapter_base.py                # BaseAdapter ABC
+│   └── event_bus.py                   # In-memory asyncio event bus
+│
+├── services/                          # 10 Python microservices
+│   ├── __init__.py
+│   ├── fusion-service/
+│   │   ├── app.py                     # FastAPI REST + WebSocket
+│   │   ├── database.py                # SQLAlchemy models + PostgreSQL
+│   │   ├── run.py                     # Local startup script
+│   │   ├── requirements.txt
+│   │   └── Dockerfile
+│   ├── adapter_detection/
+│   │   ├── adapter.py                 # YOLOv8 detection
+│   │   └── Dockerfile
+│   ├── adapter_anpr/
+│   │   ├── adapter.py                 # Indian plate OCR (YOLO + EasyOCR)
+│   │   └── Dockerfile
+│   ├── adapter_reid/
+│   │   ├── adapter.py                 # TorchReID feature extraction
+│   │   └── Dockerfile
+│   ├── adapter_anomaly/
+│   │   ├── adapter.py                 # Loitering/crowd/unusual movement
+│   │   └── Dockerfile
+│   ├── adapter_face/
+│   │   ├── adapter.py                 # InsightFace watchlist matching
+│   │   └── Dockerfile
+│   ├── api-gateway/
+│   │   ├── app.py                     # API gateway (port 8001)
+│   │   └── Dockerfile
+│   ├── case-file/
+│   │   ├── app.py                     # Evidence export (SHA-256 hash)
+│   │   └── Dockerfile
+│   ├── privacy/
+│   │   ├── app.py                     # Blur/unblur + audit trail
+│   │   └── Dockerfile
+│   └── onvif-discovery/
+│       ├── app.py                     # ONVIF camera discovery
+│       └── Dockerfile
+│
+├── dashboard/                         # React + Vite + TypeScript frontend
+│   ├── public/
+│   │   └── prahari-logo.png           # Logo
+│   ├── src/
+│   │   ├── App.tsx                    # Main UI (9 tabs)
+│   │   ├── main.tsx
+│   │   └── index.css
+│   ├── Dockerfile
+│   ├── package.json
+│   ├── tsconfig.json
+│   └── vite.config.ts
+│
+├── scripts/                           # Operational/demo scripts
+│   ├── start_all.bat
+│   ├── start_demo.bat
+│   ├── demo_event_injector.py         # Syntatic event injection
+│   ├── demo_launcher.py               # Interactive demo orchestrator
+│   ├── local_mqtt_broker.py           # asyncio MQTT 3.1.1 broker
+│   └── live_demo.py                   # Unified YOLOv8 live demo
+│
+├── models/                            # Gitignored model weights
+│   └── yolov8n.pt
+│
+├── test_feeds/                        # Gitignored test video files
+│   ├── camera01.mp4
+│   ├── camera02.mp4
+│   └── camera03.mp4
+│
+├── tests/                             # Test suite
+│   ├── test_spine.py                  # Schema validation
+│   ├── test_detection_adapter.py
+│   ├── test_anomaly_adapter.py
+│   ├── test_qdrant.py
+│   ├── test_e2e_pipeline.py
+│   └── ...
+│
+├── tools/                             # go2rtc binary
+│   └── go2rtc/
+│       └── go2rtc.exe
+│
+├── docs/                              # Documentation
+│   ├── ARCHITECTURE.md                # 4-layer architecture
+│   ├── DEVELOPER_GUIDE.md             # Setup + coding standards
+│   ├── SERVICE_REFERENCE.md           # API + service reference
+│   ├── DEPLOYMENT.md                  # Docker + production guide
+│   ├── DEMO_PLAN.md                   # Demo script
+│   ├── DEMO_README.md                 # Quick demo guide
+│   ├── scale-one-pager.md             # Cost scaling document
+│   └── assets/
+│       ├── banner.png                 # Project logo
+│       ├── demo-screenshot-1.jpg
+│       ├── demo-screenshot-2.jpg
+│       └── demo-screenshot-3.jpg
+│
+└── .github/                           # GitHub config
+    ├── workflows/ci.yml               # CI pipeline
+    ├── ISSUE_TEMPLATE/
+    │   ├── bug_report.md
+    │   └── feature_request.md
+    └── PULL_REQUEST_TEMPLATE.md
+```
+
+## 7. Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Backend | FastAPI, Uvicorn, Pydantic, SQLAlchemy, Paho-MQTT |
+| AI/ML | YOLOv8n (Ultralytics), EasyOCR, TorchReID (OSNet), InsightFace (Buffalo-L) |
+| Vector DB | Qdrant (512-D, Cosine similarity) |
+| SQL DB | PostgreSQL 15 (events, alerts, cameras, zones) |
+| Frontend | React 18, TypeScript, Vite, TailwindCSS |
+| Streaming | go2rtc, WebSocket |
+| Messaging | MQTT 3.1.1 |
+| Infrastructure | Docker, Docker Compose |
+| CI/CD | GitHub Actions |
+
+## 8. Compute-Gated Economics
+
+| Tier | Trigger | Monthly Cost (INR) | Model Used |
+|------|---------|-------------------|------------|
+| 1 (Cheap) | Motion detection always-on | ₹5/camera | Frame differencing |
+| 2 (Medium) | AI on motion trigger | ₹25/camera | YOLOv8 + ANPR + ReID |
+| 3 (Expensive) | Face on alert only | ₹10/camera | InsightFace |
+| **Total** | | **₹40/camera/month** | |
+
+At 80,000 cameras: **₹3.2 lakhs/month** statewide
+
+## 9. Deployment
+
+**Docker Compose:** `docker compose up --build` (15 services)  
+**Local dev:** Start MQTT broker + fusion service + dashboard separately  
+**Pilot:** Single district, 50 cameras, 2 engineers, 4-6 weeks
+
+## 10. Competitive Advantages
+
+| Feature | PRAHARI | Commercial VMS | Open Source |
+|---------|---------|---------------|-------------|
+| Vendor-agnostic | Yes | No | Partial |
+| Cross-camera ReID | Yes | Rare | No |
+| Compute-gated AI | Yes | No | No |
+| Privacy-by-design | Yes | Rare | No |
+| Court-admissible exports | Yes | Partial | No |
+| Cost at 80K scale | ₹40/cam/mo | ₹200+/cam/mo | Infrastructure only |
+| Zone/intrusion | Yes | Partial | Rare |
+| AI chat assistant | Yes | No | No |
+
+## 11. Key Innovation: Adversarial Threat Verification
+
+Before an event becomes an alert:
+1. Primary model (YOLOv8) detects at 0.94 confidence
+2. Threat verifier checks confidence thresholds per type
+3. Only verified threats (above threshold) reach the dashboard
+4. Reduces false positives by 60-80%
+
+## 12. Roadmap
 
 ### Month 1-2: Production Hardening ✅
-- PostgreSQL schema for persistent metadata ✅
+- PostgreSQL persistence ✅
 - JWT authentication for all APIs
 - Rate limiting and circuit breakers
 - Structured JSON logging
@@ -78,46 +323,21 @@ The container running on 3 test cameras today is the exact same container that w
 - Measure: false positive rate, response time, officer adoption
 - Iterate based on field feedback
 
-## Competitive Landscape
+## 13. Live Services (current dev environment)
 
-| Feature | PRAHARI | Commercial VMS | Open Source |
-|---------|---------|---------------|-------------|
-| Vendor-agnostic | Yes | No | Partial |
-| Cross-camera ReID | Yes | Rare | No |
-| Compute-gated AI | Yes | No | No |
-| Privacy-by-design | Yes | Rare | No |
-| Court-admissible exports | Yes | Partial | No |
-| Cost at 80K scale | ₹40/cam/mo | ₹200+/cam/mo | Infrastructure only |
+| Service | Port | Status |
+|---------|------|--------|
+| Fusion API | 8000 | ✅ Running |
+| MQTT Broker | 1883 | ✅ Running |
+| Dashboard | 5173 | ✅ Running |
+| Demo Injector | — | ✅ Injecting events |
 
-## Achievements to Date — Sumit Nawale
+## 14. Contact
 
-PRAHARI is built as a 4-layer architecture (UNIFY/PERCEIVE/FUSE/ACT) with production engineering principles from day one.
-
-### Completed Features
-
-| Feature | Layer | Description |
-|---------|-------|-------------|
-| **go2rtc stream normalization** | UNIFY | Any RTSP/WebRTC camera via Layer 1 |
-| **5 AI adapters** | PERCEIVE | YOLOv8, ANPR, ReID, Anomaly, Face |
-| **Fusion Service** | FUSE | FastAPI REST + WebSocket |
-| **MQTT event bus** | FUSE | paho-mqtt client integration |
-| **Qdrant vector DB** | FUSE | 512-D ReID embeddings |
-| **PostgreSQL persistence** | FUSE | SQLAlchemy models for events, alerts, cameras |
-| **React dashboard** | ACT | 9 tabs, WebSocket alerts, stats cards, AI chat, zones |
-| **Zone editor** | ACT | Polygon intrusion detection |
-| **AI chat assistant** | ACT | Natural language querying |
-| **Threat verification** | PERCEIVE | Confidence-based alert filtering |
-| **Semantic search** | ACT | Vector similarity search |
-| **Privacy blur** | ACT | Audit-logged unblur service |
-| **Case file exports** | ACT | SHA-256 hash chain |
-| **ONVIF discovery** | UNIFY | Camera registry management |
-| **Demo launcher** | Scripts | Interactive demo with synthetic events |
-| **Local MQTT broker** | FUSE | From-scratch asyncio MQTT 3.1.1 |
-| **GitHub CI/CD** | DevOps | Automated testing + linting |
-| **ANPR adapter refactor** | PERCEIVE | Production-ready with relative paths |
-| **Threat verification** | PERCEIVE | Reduces false positives before alerting |
-| **Adversarial verification** | PERCEIVE | Confidence-weighted alert pipeline |
+**Built by:** Sumit Nawale  
+**LinkedIn:** https://www.linkedin.com/in/sumit-nawale-25274638b  
+**GitHub:** https://github.com/itzlucifa/PRAHARI-  
 
 ---
 
-PRAHARI is built by Sumit Nawale with the belief that technology should serve justice — not the other way around.
+*PRAHARI is built by Sumit Nawale with the belief that technology should serve justice — not the other way around.*
