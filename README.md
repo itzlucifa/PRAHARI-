@@ -43,8 +43,22 @@ PRAHARI follows a 4-layer architecture:
    - TorchReID cross-camera matching
    - InsightFace watchlist matching
    - Rule-based anomaly detection
-3. **FUSE** — Correlate events through MQTT event bus and Qdrant vector database
+3. **FUSE** — Correlate events through MQTT event bus, Qdrant vector database, and PostgreSQL
 4. **ACT** — Control room dashboard, alerts, case file exports, privacy controls
+
+## Key Features
+
+- **Vendor-agnostic ingestion** via go2rtc (any RTSP/WebRTC camera)
+- **5 AI event types:** detection, ANPR, ReID, anomaly, face match
+- **Real-time dashboard** with WebSocket alerts
+- **Zone editor** with polygon intrusion detection
+- **AI chat assistant** for natural language querying
+- **Threat verification** with confidence-based filtering
+- **Court-admissible exports** with SHA-256 hash chain
+- **Privacy-by-design** with audit-logged blur/unblur
+- **Court-admissible exports** with SHA-256 hash chain
+- **PostgreSQL persistence** with hybrid in-memory fallback
+- **Compute-gated cost model:** ~₹40/camera/month at 80K scale
 
 ## Repository Structure
 
@@ -53,7 +67,7 @@ prahari/
 ├── docker-compose.yml          # Full stack orchestration
 ├── requirements.txt            # Python dependencies
 ├── README.md                   # This file
-├── VISION.md                   # Strategic roadmap
+├── VISION.md                   # Complete technical brain (all details)
 │
 ├── dashboard/                  # React + Vite + TypeScript frontend
 │   ├── src/App.tsx
