@@ -89,12 +89,32 @@ The container running on 3 test cameras today is the exact same container that w
 | Court-admissible exports | Yes | Partial | No |
 | Cost at 80K scale | ₹40/cam/mo | ₹200+/cam/mo | Infrastructure only |
 
-## The Ask
+## Achievements to Date — Sumit Nawale
 
-We are asking for a chance to pilot PRAHARI in one district. 
+PRAHARI is built as a 4-layer architecture (UNIFY/PERCEIVE/FUSE/ACT) with production engineering principles from day one.
 
-We have built the production architecture at hackathon scale. Every service running on 3 cameras today is the exact same container that would run on camera 80,000. We just need the opportunity to prove it at scale.
+### Completed Features
+
+| Feature | Layer | Description |
+|---------|-------|-------------|
+| **go2rtc stream normalization** | UNIFY | Any RTSP/WebRTC camera via Layer 1 |
+| **5 AI adapters** | PERCEIVE | YOLOv8, ANPR, ReID, Anomaly, Face |
+| **Fusion Service** | FUSE | FastAPI REST + WebSocket |
+| **MQTT event bus** | FUSE | paho-mqtt client integration |
+| **Qdrant vector DB** | FUSE | 512-D ReID embeddings |
+| **PostgreSQL persistence** | FUSE | SQLAlchemy models for events, alerts, cameras |
+| **React dashboard** | ACT | 7 tabs, WebSocket alerts, stats cards |
+| **Zone editor** | ACT | Polygon intrusion detection |
+| **AI chat assistant** | ACT | Natural language querying |
+| **Threat verification** | PERCEIVE | Confidence-based alert filtering |
+| **Semantic search** | ACT | Vector similarity search |
+| **Privacy blur** | ACT | Audit-logged unblur service |
+| **Case file exports** | ACT | SHA-256 hash chain |
+| **ONVIF discovery** | UNIFY | Camera registry management |
+| **Demo launcher** | Scripts | Interactive demo with synthetic events |
+| **Local MQTT broker** | FUSE | From-scratch asyncio MQTT 3.1.1 |
+| **GitHub CI/CD** | DevOps | Automated testing + linting |
 
 ---
 
-**PRAHARI is built by Sumit Nawale with the belief that technology should serve justice — not the other way around.**
+PRAHARI is built by Sumit Nawale with the belief that technology should serve justice — not the other way around.
