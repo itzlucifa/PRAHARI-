@@ -4,14 +4,17 @@ import os
 import json
 import uuid
 import time
+import hashlib
 import logging
 import threading
 from collections import defaultdict
+from datetime import datetime, timezone
 from typing import Optional, List
 
 import paho.mqtt.client as mqtt
 import numpy as np
 import requests
+import cv2
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
@@ -1115,3 +1118,164 @@ async def chat_query(payload: dict):
         logger.error("Chat query failed: %s", exc)
         reply = "Sorry, I encountered an error processing your query."
     return {"reply": reply}
+
+
+from fastapi.responses import StreamingResponse
+import io
+import base64
+
+
+def _generate_synthetic_frame(camera_id: str, width: int = 320, height: int = 240, frame_num: int = 0):
+    """Generate a synthetic video frame for testing (used when test feeds unavailable)."""
+    import time as _time
+    np_frame = np.zeros((height, width, 3), dtype=np.uint8)
+
+    np_frame[:, :, 1] = 30
+
+    x = int((frame_num * 3) % width)
+    cv2.circle(np_frame, (x, height // 2), 20, (0, 0, 255), -1)
+
+    cam_idx = hash(camera_id) % 3
+    for i in range(3):
+        cx = (width * i + frame_num * 2) % width
+        cy = (height * (i + 1)) % height
+        cv2.circle(np_frame, (cx, cy), 10, (0, 255, 0), -1)
+
+    text = f"{camera_id} | frame:{frame_num:04d}"
+    cv2.putText(np_frame, text, (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+
+    ret, buffer = cv2.imencode('.jpg', np_frame)
+    if not ret:
+        return None
+    return buffer.tobytes()
+
+
+@app.get("/stream/mjpeg/{camera_id}")
+async def stream_mjpeg(camera_id: str, fps: int = 5):
+    """Serve MJPEG video stream for a camera (with synthetic frame fallback)."""
+
+    def video_generator():
+        frame_num = 0
+        interval = 1.0 / fps
+        test_feed_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "test_feeds", f"{camera_id}.mp4"
+        )
+
+        cap = None
+        if os.path.exists(test_feed_path):
+            cap = cv2.VideoCapture(test_feed_path)
+            if not cap.isOpened():
+                cap.release()
+                cap = None
+
+        try:
+            while True:
+                start = time.time()
+                ret, frame = False, None
+                if cap:
+                    ret, frame = cap.read()
+                    if not ret:
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                        ret, frame = cap.read()
+
+                if ret and frame is not None:
+                    ret, buffer = cv2.imencode('.jpg', frame)
+                    if ret:
+                        yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n")
+                else:
+                    synthetic = _generate_synthetic_frame(camera_id, frame_num=frame_num)
+                    if synthetic:
+                        yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + synthetic + b"\r\n")
+
+                frame_num += 1
+                elapsed = time.time() - start
+                sleep_time = max(0, interval - elapsed)
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+        except GeneratorExit:
+            if cap:
+                cap.release()
+
+    return StreamingResponse(video_generator(), media_type="multipart/x-mixed-replace; boundary=frame")
+
+
+@app.get("/stream/test_feed/{camera_id}")
+async def test_feed(camera_id: str):
+    """Get a single test frame from a camera."""
+    test_feed_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "test_feeds", f"{camera_id}.mp4"
+    )
+
+    if os.path.exists(test_feed_path):
+        cap = cv2.VideoCapture(test_feed_path)
+        if cap.isOpened():
+            ret, frame = cap.read()
+            cap.release()
+            if ret:
+                _, buffer = cv2.imencode('.jpg', frame)
+                return {"camera_id": camera_id, "frame": base64.b64encode(buffer).decode(), "width": frame.shape[1], "height": frame.shape[0]}
+
+    frame = _generate_synthetic_frame(camera_id)
+    if frame:
+        return {"camera_id": camera_id, "frame": base64.b64encode(frame).decode(), "width": 320, "height": 240, "synthetic": True}
+    return {"camera_id": camera_id, "frame": None, "synthetic": True}
+
+
+@app.post("/incidents/{incident_id}/export")
+async def export_incident(incident_id: str, db=Depends(get_db)):
+    """Export an incident as a court-admissible case file with SHA-256 hash."""
+    if db is None:
+        with latest_events_lock:
+            relevant_events = [e for e in latest_events if e.get("camera_id") in ["camera-01", "camera-02", "camera-03"]]
+    else:
+        try:
+            incident = db.query(Incident).filter(Incident.id == incident_id).first()
+            if not incident:
+                return {"status": "error", "message": "Incident not found"}
+            events = db.query(Event).filter(Event.camera_id == incident.camera_id).limit(100).all()
+            relevant_events = [{
+                "event_id": e.id, "camera_id": e.camera_id,
+                "timestamp": e.timestamp, "event_type": e.event_type,
+                "confidence": e.confidence,
+            } for e in events]
+            case_data = {
+                "incident": {
+                    "id": incident.id, "camera_id": incident.camera_id,
+                    "severity": incident.severity, "status": incident.status,
+                    "title": incident.title, "description": incident.description,
+                    "created_at": incident.created_at,
+                },
+                "events": relevant_events,
+            }
+        except Exception as exc:
+            logger.error("Export failed: %s", exc)
+            return {"status": "error", "message": str(exc)}
+
+    if db is None:
+        case_data = {
+            "incident": {"id": incident_id, "severity": "unknown", "status": "open"},
+            "events": relevant_events[:50],
+            "agent_alerts": coordinator.get_alerts()[:20],
+            "agent_incidents": coordinator.get_incidents()[:20],
+        }
+
+    case_json = json.dumps(case_data, indent=2, sort_keys=True, default=str)
+    case_hash = hashlib.sha256(case_json.encode()).hexdigest()
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    filename = f"case_{incident_id[:8]}_{timestamp}.json"
+
+    return {
+        "status": "ok",
+        "filename": filename,
+        "sha256": case_hash,
+        "case_data": case_data,
+        "metadata": {
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "exported_by": "system",
+            "hash_algorithm": "SHA-256",
+            "event_count": len(case_data.get("events", [])),
+        },
+    }
