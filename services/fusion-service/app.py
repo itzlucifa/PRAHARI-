@@ -404,6 +404,18 @@ async def ingest_event(event: dict, db=Depends(get_db)):
             if len(TRAJECTORY_STORE[track_id]) > 500:
                 TRAJECTORY_STORE[track_id] = TRAJECTORY_STORE[track_id][-500:]
 
+        coordinator.add_trajectory_point(
+            track_id=track_id,
+            camera_id=event.get("camera_id"),
+            event_type=event.get("event_type", ""),
+            entity_type=event.get("entity_type", ""),
+            bbox=event.get("bbox", {}),
+            confidence=event.get("confidence", 0),
+            timestamp=event.get("timestamp", ""),
+            embedding_id=event.get("embedding_id"),
+            _received_at=now,
+        )
+
     if db is not None:
         persist_event(db, event)
 

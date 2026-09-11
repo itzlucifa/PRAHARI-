@@ -311,48 +311,193 @@ class InvestigatorAgent:
 
 
 class CopilotAgent:
-    """Handles contextual chat queries with full system awareness."""
+    """Handles contextual chat queries with full system awareness.
+
+    Inspired by Vision Labs' 19-tool AI assistant — provides tool-like
+    capabilities for querying events, incidents, trajectories, and generating
+    scene descriptions.
+    """
 
     def __init__(self, coordinator):
         self.coordinator = coordinator
+        self.conversation_history: list[dict] = []
+        self.max_history = 10
+
+    TOOLS = [
+        "query_cameras", "query_alerts", "query_incidents",
+        "query_events", "query_trajectory", "predict_trajectory",
+        "describe_scene", "query_threats",
+    ]
 
     def respond(self, query: str) -> str:
-        """Generate a contextual response to a user query."""
+        """Generate a contextual response to a user query using available tools."""
         query_lower = query.lower()
+        self.conversation_history.append({"role": "user", "content": query})
+        if len(self.conversation_history) > self.max_history:
+            self.conversation_history.pop(0)
+
+        if "track" in query_lower and "camera" in query_lower:
+            return self._tool_query_trajectory(query_lower)
+
+        if "where" in query_lower or "path" in query_lower or "movement" in query_lower:
+            if "track" in query_lower or "track_id" in query_lower:
+                return self._tool_query_trajectory(query_lower)
+            return "I can track persons and vehicles across cameras using ReID. Specify a track_id, e.g., 'Show me the trajectory for track_001'."
 
         if "incident" in query_lower:
-            incidents = self.coordinator.get_incidents()
-            critical = [i for i in incidents if i.get("severity") == "critical"]
-            if critical:
-                return f"There are {len(critical)} critical incidents: " + ", ".join(
-                    f"{i.get('title')} at {i.get('camera_id')}" for i in critical[:3]
-                )
-            return f"There are {len(incidents)} total incidents, {len(critical)} critical."
+            return self._tool_query_incidents(query_lower)
 
-        if "alert" in query_lower and "severity" in query_lower:
-            alerts = self.coordinator.get_alerts()
-            sev_counts = defaultdict(int)
-            for a in alerts:
-                sev_counts[a.get("severity", "medium")] += 1
-            return f"Alert severity breakdown: " + ", ".join(f"{k}={v}" for k, v in sev_counts.items())
+        if "alert" in query_lower:
+            return self._tool_query_alerts(query_lower)
 
         if "camera" in query_lower or "cameras" in query_lower:
-            cameras = self.coordinator.get_cameras()
-            return f"There are {len(cameras)} cameras online: " + ", ".join(c.get("camera_id") for c in cameras)
+            return self._tool_query_cameras()
 
-        if "track" in query_lower or "path" in query_lower or "where" in query_lower:
-            return "I can track persons and vehicles across cameras using ReID. Specify a track_id or person description."
+        if "threat" in query_lower or "danger" in query_lower or "risk" in query_lower:
+            return self._tool_query_threats()
 
-        if "threat" in query_lower or "danger" in query_lower:
-            threats = [
-                e for e in self.coordinator.get_events()
-                if (e.get("confidence", 0) > 0.85 or e.get("event_type") in ("anomaly", "face_match"))
-            ]
-            if threats:
-                return f"Found {len(threats)} high-confidence threats. Top threat: {threats[0].get('event_type')} at {threats[0].get('camera_id')}."
-            return "No active high-confidence threats detected."
+        if "event" in query_lower or "events" in query_lower:
+            return self._tool_query_events()
 
-        return "I can help with: camera status, incident severity, threat detection, cross-camera tracking, and event search."
+        if "tool" in query_lower or "capabilit" in query_lower:
+            return f"I have {len(self.TOOLS)} tools available: " + ", ".join(self.TOOLS)
+
+        if "describe" in query_lower or "scene" in query_lower:
+            return self._tool_describe_scene(query_lower)
+
+        if "what" in query_lower:
+            return self._tool_describe_scene(query_lower)
+
+        return "I can help with: camera status, incidents, alerts, threat detection, cross-camera trajectory tracking, and scene descriptions. Try: 'Where was track_016 seen?' or 'Describe the scene at camera-01'."
+
+    def _tool_query_cameras(self) -> str:
+        cameras = self.coordinator.get_cameras()
+        if not cameras:
+            return "No cameras detected. Ensure camera streams are configured."
+        lines = [f"There are {len(cameras)} cameras streaming live:"]
+        for c in cameras[:10]:
+            event_count = c.get("event_count", 0)
+            lines.append(f"  - {c['camera_id']}: {event_count} tracked events")
+        return "\n".join(lines)
+
+    def _tool_query_alerts(self) -> str:
+        alerts = self.coordinator.get_alerts()
+        if not alerts:
+            return "No active alerts. All clear."
+
+        sev_counts = defaultdict(int)
+        for a in alerts:
+            sev_counts[a.get("severity", "medium")] += 1
+
+        response = [f"There are {len(alerts)} active alerts:"]
+        for sev in ("critical", "high", "medium", "low"):
+            if sev_counts[sev]:
+                response.append(f"  - {sev.upper()}: {sev_counts[sev]}")
+        recent = alerts[:3]
+        response.append("Recent alerts:")
+        for a in recent:
+            response.append(f"  - [{a.get('severity', '').upper()}] {a.get('title', 'Unknown')} at {a.get('camera_id')}")
+        return "\n".join(response)
+
+    def _tool_query_incidents(self, query: str) -> str:
+        incidents = self.coordinator.get_incidents()
+        if not incidents:
+            return "No incidents recorded."
+
+        critical = [i for i in incidents if i.get("severity") == "critical"]
+        high = [i for i in incidents if i.get("severity") == "high"]
+
+        if critical:
+            response = f"There are {len(critical)} CRITICAL incidents requiring immediate attention:"
+            for i in critical[:3]:
+                response += f"\n  - {i.get('title')} at {i.get('camera_id')} ({i.get('created_at', '')[:19]})"
+            return response
+
+        if high:
+            response = f"There are {len(high)} HIGH severity incidents:"
+            for i in high[:3]:
+                response += f"\n  - {i.get('title')} at {i.get('camera_id')} ({i.get('created_at', '')[:19]})"
+            return response
+
+        return f"There are {len(incidents)} total incidents, 0 critical."
+
+    def _tool_query_events(self) -> str:
+        events = self.coordinator.get_events()
+        if not events:
+            return "No recent events."
+        types = defaultdict(int)
+        for e in events:
+            types[e.get("event_type", "unknown")] += 1
+        response = f"In the last window: {len(events)} events detected."
+        response += " Breakdown: " + ", ".join(f"{k}={v}" for k, v in types.items())
+        return response
+
+    def _tool_query_threats(self) -> str:
+        threats = [
+            e for e in self.coordinator.get_events()
+            if (e.get("confidence", 0) >= 0.85 or e.get("event_type") in ("anomaly", "face_match"))
+        ]
+        if not threats:
+            return "No high-confidence threats detected. All cameras are secure."
+        response = f"Found {len(threats)} high-confidence threats:"
+        for t in threats[:3]:
+            response += f"\n  - {t.get('event_type')} at {t.get('camera_id')} (conf: {t.get('confidence', 0):.2f})"
+        return response
+
+    def _tool_query_trajectory(self, query_lower: str) -> str:
+        track_id = None
+        for word in query_lower.replace("?", "").split():
+            if word.startswith("track"):
+                track_id = word
+                break
+
+        if track_id:
+            trajectory = self.coordinator.get_trajectory(track_id)
+            path = trajectory.get("path", [])
+            if not path:
+                return f"No trajectory found for {track_id}."
+            cameras = trajectory.get("cameras", [])
+            response = f"Trajectory for {track_id} ({len(cameras)} cameras visited):"
+            for entry in path:
+                cam = entry["camera_id"]
+                ts = entry["timestamp"][:19] if entry.get("timestamp") else "unknown"
+                etype = entry.get("event_type", "unknown")
+                response += f"\n  {ts} | {cam} | {etype} (conf: {entry.get('confidence', 0):.2f})"
+            prediction = self.coordinator.predict_trajectory(track_id)
+            next_cam = prediction.get("predicted_next_camera", "unknown")
+            confidence = prediction.get("confidence", 0)
+            if next_cam != "unknown" and confidence > 0:
+                response += f"\n  Predicted next: {next_cam} (confidence: {confidence:.0%})"
+            return response
+
+        track_ids = list(self.coordinator._trajectory_store.keys())[:10]
+        if track_ids:
+            return f"Known tracks: {', '.join(track_ids[:5])}. Use 'trajectory for track_001' to see details."
+        return "No trajectory data available. Tracks are created when entities are detected across cameras."
+
+    def _tool_describe_scene(self, query_lower: str) -> str:
+        """Generate a VLM-style natural language scene description."""
+        events = self.coordinator.get_events()
+        if not events:
+            return "No recent activity. All cameras are quiet."
+
+        camera_descriptions = defaultdict(list)
+        for e in events[:10]:
+            cam = e.get("camera_id", "unknown")
+            etype = e.get("event_type", "unknown")
+            entity = e.get("entity_type", "unknown")
+            conf = e.get("confidence", 0)
+            if conf > 0.8:
+                camera_descriptions[cam].append(f"{entity} ({etype}, conf {conf:.0%})")
+
+        if not camera_descriptions:
+            return "All cameras showing normal activity, no high-confidence detections."
+
+        response = "Scene description:\n"
+        for cam, descriptions in camera_descriptions.items():
+            response += f"  {cam}: " + ", ".join(descriptions) + "\n"
+        response += "\nOverall: Active surveillance with multiple detections across cameras."
+        return response
 
 
 class ThreatCoordinator:
@@ -366,6 +511,8 @@ class ThreatCoordinator:
         self.running = False
         self._lock = threading.Lock()
         self._event_queue: deque = deque(maxlen=1000)
+        self._trajectory_store: dict[str, list[dict]] = defaultdict(list)
+        self._trajectory_lock = threading.Lock()
 
         if config_path:
             self._load_config(config_path)
@@ -524,6 +671,78 @@ class ThreatCoordinator:
     def notify_pattern(self, camera_id: str, pattern_type: str, message: str, severity: Severity):
         """Called by Watcher when a pattern is detected."""
         logger.info("Pattern detected: %s on %s (severity: %s)", pattern_type, camera_id, severity.value)
+
+    def add_trajectory_point(self, track_id: str, camera_id: str, event_type: str,
+                              entity_type: str, bbox: dict, confidence: float,
+                              timestamp: str, embedding_id: str = None, _received_at: float = None):
+        """Add a point to the cross-camera trajectory for a tracked entity."""
+        if _received_at is None:
+            _received_at = time.time()
+        with self._trajectory_lock:
+            entry = {
+                "camera_id": camera_id,
+                "timestamp": timestamp,
+                "event_type": event_type,
+                "entity_type": entity_type,
+                "bbox": bbox,
+                "confidence": confidence,
+                "embedding_id": embedding_id,
+                "_received_at": _received_at,
+            }
+            self._trajectory_store[track_id].append(entry)
+            if len(self._trajectory_store[track_id]) > 500:
+                self._trajectory_store[track_id] = self._trajectory_store[track_id][-500:]
+
+    def get_trajectory(self, track_id: str) -> dict:
+        """Get the trajectory for a tracked entity."""
+        with self._trajectory_lock:
+            if track_id not in self._trajectory_store:
+                return {"track_id": track_id, "path": [], "cameras": []}
+            path = self._trajectory_store[track_id]
+            cameras = []
+            seen = set()
+            for entry in path:
+                if entry["camera_id"] not in seen:
+                    cameras.append(entry["camera_id"])
+                    seen.add(entry["camera_id"])
+            return {
+                "track_id": track_id,
+                "cameras": cameras,
+                "path": list(path),
+                "total_events": len(path),
+                "duration_seconds": (path[-1].get("_received_at", 0) - path[0].get("_received_at", 0)) if len(path) > 1 else 0,
+            }
+
+    def predict_trajectory(self, track_id: str) -> dict:
+        """Predict next camera for a tracked entity."""
+        with self._trajectory_lock:
+            if track_id not in self._trajectory_store:
+                return {"track_id": track_id, "prediction": None}
+            path = self._trajectory_store[track_id]
+            if len(path) < 2:
+                return {"track_id": track_id, "prediction": "Insufficient data"}
+            unique_cameras = list(dict.fromkeys([e["camera_id"] for e in path]))
+            if len(unique_cameras) < 2:
+                return {"track_id": track_id, "prediction": "Single camera only"}
+            last_cam = unique_cameras[-1]
+            transitions = defaultdict(lambda: defaultdict(int))
+            for i in range(len(unique_cameras) - 1):
+                transitions[unique_cameras[i]][unique_cameras[i + 1]] += 1
+            if last_cam in transitions:
+                next_cameras = sorted(transitions[last_cam].items(), key=lambda x: x[1], reverse=True)
+                prediction = next_cameras[0][0] if next_cameras else "unknown"
+                confidence = next_cameras[0][1] / sum(transitions[last_cam].values()) if next_cameras else 0
+            else:
+                prediction = "unknown"
+                confidence = 0.0
+            return {
+                "track_id": track_id,
+                "last_camera": last_cam,
+                "predicted_next_camera": prediction,
+                "confidence": round(confidence, 2),
+                "camera_sequence": unique_cameras,
+                "path_length": len(path),
+            }
 
     def start(self):
         """Start the coordinator thread."""
