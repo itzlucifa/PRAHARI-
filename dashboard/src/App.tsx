@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import ZoneEditor from './components/ZoneEditor'
-import { DetectionEvent, Camera, Zone } from './types'
+import { DetectionEvent, Camera, Zone, Alert, Incident } from './types'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -9,6 +9,7 @@ const navItems = [
   { label: 'Cameras', icon: 'camera' },
   { label: 'Zones', icon: 'zones' },
   { label: 'Alerts', icon: 'bell' },
+  { label: 'Incidents', icon: 'bell' },
   { label: 'ANPR', icon: 'anpr' },
   { label: 'ReID', icon: 'reid' },
   { label: 'Case Files', icon: 'case' },
@@ -35,6 +36,8 @@ export default function App() {
   const [events, setEvents] = useState<DetectionEvent[]>([])
   const [cameras, setCameras] = useState<Camera[]>([])
   const [zones, setZones] = useState<Zone[]>([])
+  const [alerts, setAlerts] = useState<Alert[]>([])
+  const [incidents, setIncidents] = useState<Incident[]>([])
   const [editingCameraId, setEditingCameraId] = useState<string | null>(null)
   const [connected, setConnected] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -104,14 +107,18 @@ export default function App() {
           setConnected(false)
           return
         }
-        const [eventsData, camerasData, zonesData] = await Promise.all([
+        const [eventsData, camerasData, zonesData, alertsData, incidentsData] = await Promise.all([
           eventsRes.json(),
           camerasRes.json(),
           zonesRes.ok ? zonesRes.json() : [],
+          fetch(`${API_URL}/alerts`).then(r => r.ok ? r.json() : []),
+          fetch(`${API_URL}/incidents`).then(r => r.ok ? r.json() : []),
         ])
         setEvents(eventsData)
         setCameras(camerasData)
         if (zonesRes.ok) setZones(zonesData)
+        setAlerts(alertsData)
+        setIncidents(incidentsData)
         setConnected(true)
         connectWebSocket()
       } catch (e) {
@@ -347,24 +354,147 @@ export default function App() {
         )}
 
         {activeTab === 'Alerts' && (
-          <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/50">
-              <h3 className="text-sm font-semibold text-slate-900">Active Alerts</h3>
-            </div>
-            <div className="divide-y divide-slate-100">
-              {events.filter(e => e.confidence > 0.8).slice(0, 10).map(event => (
-                <div key={event.event_id} className="px-6 py-4 hover:bg-red-50 transition-colors">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm font-medium text-slate-900">{getEventLabel(event)}</div>
-                      <div className="text-xs text-slate-500 mt-1">{event.camera_id}</div>
-                    </div>
-                    <span className="text-xs font-medium text-red-700 bg-red-50 px-2 py-1 rounded-full border border-red-200">
-                      High Confidence
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-slate-900">Alerts</h2>
+              <div className="flex gap-2">
+                {['critical', 'high', 'medium', 'low'].map(sev => {
+                  const count = alerts.filter(a => a.severity === sev).length
+                  const colors: Record<string, string> = {
+                    critical: 'bg-red-100 text-red-800 border-red-300',
+                    high: 'bg-orange-100 text-orange-800 border-orange-300',
+                    medium: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+                    low: 'bg-blue-100 text-blue-800 border-blue-300',
+                  }
+                  return (
+                    <span key={sev} className={`px-2 py-1 rounded-lg text-xs font-medium border ${colors[sev]}`}>
+                      {sev}: {count}
                     </span>
+                  )
+                })}
+              </div>
+            </div>
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/50">
+                <h3 className="text-sm font-semibold text-slate-900">Active Alerts</h3>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {alerts.slice(0, 10).map(alert => {
+                  const sevColors: Record<string, string> = {
+                    critical: 'text-red-600 bg-red-50 border-red-200',
+                    high: 'text-orange-600 bg-orange-50 border-orange-200',
+                    medium: 'text-yellow-600 bg-yellow-50 border-yellow-200',
+                    low: 'text-blue-600 bg-blue-50 border-blue-200',
+                  }
+                  return (
+                    <div key={alert.id} className="px-6 py-4 hover:bg-slate-50 transition-colors border-l-4 border-l-gray-300">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-sm font-medium text-slate-900">{getEventLabel({event_id: alert.event_id, camera_id: alert.camera_id, timestamp: alert.created_at, event_type: alert.alert_type as any, entity_type: 'object' as const, bbox: {x:0,y:0,w:0,h:0}, confidence: alert.confidence, track_id: '', source_repo: '', requires_authorization: false})}</div>
+                          <div className="text-xs text-slate-500 mt-1">{alert.camera_id} • {new Date(alert.created_at).toLocaleString()}</div>
+                        </div>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium border ${sevColors[alert.severity] || sevColors.medium}`}>
+                          {alert.severity?.toUpperCase()}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })}
+                {alerts.length === 0 && (
+                  <div className="px-6 py-8 text-center text-sm text-slate-500">No alerts</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'Incidents' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-slate-900">Incident Management</h2>
+              <div className="flex gap-2">
+                {['critical', 'high', 'medium', 'low'].map(sev => {
+                  const count = incidents.filter(i => i.severity === sev).length
+                  const colors: Record<string, string> = {
+                    critical: 'bg-red-100 text-red-800 border-red-300',
+                    high: 'bg-orange-100 text-orange-800 border-orange-300',
+                    medium: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+                    low: 'bg-blue-100 text-blue-800 border-blue-300',
+                  }
+                  return (
+                    <span key={sev} className={`px-2 py-1 rounded-lg text-xs font-medium border ${colors[sev]}`}>
+                      {sev}: {count}
+                    </span>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                {['open', 'acknowledged', 'investigating', 'resolved', 'dismissed'].map(st => {
+                const count = incidents.filter(i => i.status === st).length
+                const bgColors: Record<string, string> = {
+                  open: 'bg-red-50 border-red-200 text-red-700',
+                  acknowledged: 'bg-orange-50 border-orange-200 text-orange-700',
+                  investigating: 'bg-blue-50 border-blue-200 text-blue-700',
+                  resolved: 'bg-green-50 border-green-200 text-green-700',
+                  dismissed: 'bg-slate-50 border-slate-200 text-slate-500',
+                }
+                return (
+                  <div key={st} className={`border rounded-xl p-4 ${bgColors[st] || bgColors.open}`}>
+                    <div className="text-xs font-medium mb-1 capitalize">{st}</div>
+                    <div className="text-2xl font-bold">{count}</div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/50">
+                <h3 className="text-sm font-semibold text-slate-900">Active Incidents</h3>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {incidents.map(incident => (
+                  <div key={incident.id} className="px-6 py-4 hover:bg-slate-50 transition-colors">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold border ${
+                            incident.severity === 'critical' ? 'bg-red-100 text-red-800 border-red-300' :
+                            incident.severity === 'high' ? 'bg-orange-100 text-orange-800 border-orange-300' :
+                            incident.severity === 'medium' ? 'bg-yellow-100 text-yellow-800 border-yellow-300' :
+                            'bg-blue-100 text-blue-800 border-blue-300'
+                          }`}>
+                            {incident.severity?.toUpperCase()}
+                          </span>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium border ${
+                            incident.status === 'open' ? 'bg-red-50 text-red-700 border-red-200' :
+                            incident.status === 'acknowledged' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                            incident.status === 'investigating' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                            incident.status === 'resolved' ? 'bg-green-50 text-green-700 border-green-200' :
+                            'bg-slate-50 text-slate-600 border-slate-300'
+                          }`}>
+                            {incident.status}
+                          </span>
+                        </div>
+                        <div className="text-sm font-medium text-slate-900 mt-2">{incident.title}</div>
+                        <div className="text-xs text-slate-500 mt-1">
+                          Camera: {incident.camera_id} • Created: {new Date(incident.created_at).toLocaleString()}
+                        </div>
+                        {incident.description && (
+                          <div className="text-xs text-slate-600 mt-1">{incident.description}</div>
+                        )}
+                      </div>
+                      {incident.assigned_to && (
+                        <span className="text-xs text-slate-500">Assigned: {incident.assigned_to}</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {incidents.length === 0 && (
+                  <div className="px-6 py-8 text-center text-sm text-slate-500">No incidents</div>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -432,9 +562,11 @@ export default function App() {
                 <ul className="list-disc list-inside mt-2 space-y-1 text-xs">
                   <li>"How many cameras are online?"</li>
                   <li>"Show me recent alerts"</li>
+                  <li>"How many incidents are critical?"</li>
                   <li>"How many people were detected?"</li>
                   <li>"What vehicles were seen?"</li>
                   <li>"Show me recent license plates"</li>
+                  <li>"What is the alert severity level?"</li>
                 </ul>
               </div>
             </div>

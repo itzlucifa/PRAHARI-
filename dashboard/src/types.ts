@@ -27,3 +27,32 @@ export interface Zone {
   type: string
   points: number[][]
 }
+
+export interface Alert {
+  id: string
+  event_id: string
+  camera_id: string
+  alert_type: string
+  confidence: number
+  severity: 'low' | 'medium' | 'high' | 'critical'
+  status: string
+  created_at: string
+  acknowledged_by?: string
+  incident_id?: string
+}
+
+export interface Incident {
+  id: string
+  camera_id: string
+  severity: 'low' | 'medium' | 'high' | 'critical'
+  status: 'open' | 'acknowledged' | 'investigating' | 'resolved' | 'dismissed'
+  title: string
+  description: string
+  event_types: string
+  created_at: string
+  updated_at: string
+  acknowledged_by?: string
+  assigned_to?: string
+  resolved_at?: string
+  notes?: string
+}

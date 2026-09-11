@@ -17,9 +17,9 @@ from qdrant_client.models import Distance, VectorParams, PointStruct
 
 from shared.events import DetectionEvent, TOPIC_EVENTS, TOPIC_ALERTS
 try:
-    from .database import SessionLocal, Camera, Event, Alert, init_db, DB_AVAILABLE
+    from .database import SessionLocal, Camera, Event, Alert, Incident, init_db, DB_AVAILABLE
 except ImportError:
-    from database import SessionLocal, Camera, Event, Alert, init_db, DB_AVAILABLE
+    from database import SessionLocal, Camera, Event, Alert, Incident, init_db, DB_AVAILABLE
 
 app = FastAPI(title="PRAHARI Fusion Service", version="0.3.0")
 
@@ -97,7 +97,7 @@ def persist_event(db, item: dict):
         logger.debug("Failed to persist event: %s", exc)
 
 
-def persist_alert(db, event_id: str, camera_id: str, alert_type: str, confidence: Optional[float]):
+def persist_alert(db, event_id: str, camera_id: str, alert_type: str, confidence: Optional[float], severity: str = "medium"):
     try:
         alert = Alert(
             id=str(uuid.uuid4()),
@@ -107,12 +107,88 @@ def persist_alert(db, event_id: str, camera_id: str, alert_type: str, confidence
             confidence=confidence,
             status="open",
             created_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            severity=severity,
         )
         db.add(alert)
         db.commit()
+        return alert.id
     except Exception as exc:
         db.rollback()
         logger.debug("Failed to persist alert: %s", exc)
+        return None
+
+
+def calculate_severity(event_type: str, confidence: float, camera_id: str) -> str:
+    base_severity = "low"
+    if confidence >= 0.9 or event_type in ("anomaly", "face_match"):
+        base_severity = "critical"
+    elif confidence >= 0.8:
+        base_severity = "high"
+    elif confidence >= 0.7:
+        base_severity = "medium"
+
+    recent_count = 0
+    with latest_events_lock:
+        now = time.time()
+        recent_events = [
+            e for e in latest_events
+            if e.get("camera_id") == camera_id
+            and (now - e.get("_received_at", 0)) < 300
+        ]
+        recent_count = len(recent_events)
+
+    if recent_count >= 5:
+        levels = {"low": "medium", "medium": "high", "high": "critical", "critical": "critical"}
+        base_severity = levels.get(base_severity, base_severity)
+
+    return base_severity
+
+
+def persist_incident(db, alert_id: Optional[str], camera_id: str, severity: str,
+                     title: str, description: str, event_types: str):
+    try:
+        incident = Incident(
+            id=str(uuid.uuid4()),
+            alert_id=alert_id,
+            camera_id=camera_id,
+            severity=severity,
+            status="open",
+            title=title,
+            description=description,
+            event_types=event_types,
+            created_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            updated_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        )
+        db.add(incident)
+        db.commit()
+        return incident.id
+    except Exception as exc:
+        db.rollback()
+        logger.debug("Failed to persist incident: %s", exc)
+        return None
+
+
+incident_lock = threading.Lock()
+escalation_tracker: dict[str, list[float]] = defaultdict(list)
+
+
+def check_escalation(db, camera_id: str, event_type: str, confidence: float) -> Optional[str]:
+    now = time.time()
+    with incident_lock:
+        events = escalation_tracker[camera_id]
+        events.append(now)
+        events[:] = [t for t in events if now - t < 300]
+
+        if len(events) >= 5:
+            severity = calculate_severity(event_type, confidence, camera_id)
+            title = f"Escalated: Multiple events on {camera_id}"
+            description = f"{len(events)} events detected within 5 minutes. Highest confidence: {confidence}"
+            incident_id = persist_incident(
+                db, None, camera_id, severity, title, description, event_type
+            )
+            events.clear()
+            return incident_id
+    return None
 
 
 def _on_mqtt_connect(client, userdata, flags, rc, properties=None):
@@ -168,16 +244,29 @@ def _on_mqtt_message(client, userdata, msg):
                         pass
 
                 if item.get("event_type") == "detection" and item.get("confidence", 0) > 0.7:
+                    confidence = item.get("confidence", 0)
+                    severity = calculate_severity(item.get("event_type"), confidence, item.get("camera_id"))
                     alert = dict(item)
                     alert["alert_id"] = str(uuid.uuid4())
+                    alert["severity"] = severity
                     if db:
-                        persist_alert(db, item.get("event_id"), item.get("camera_id"), "detection", item.get("confidence"))
+                        alert_id = persist_alert(db, item.get("event_id"), item.get("camera_id"), "detection", confidence, severity)
+                        if severity in ("high", "critical"):
+                            incident_id = persist_incident(
+                                db, alert_id, item.get("camera_id"), severity,
+                                f"{severity.upper()}: {item.get('entity_type', 'object')} detected",
+                                f"Confidence: {confidence} | Track: {item.get('track_id', 'N/A')}",
+                                item.get("event_type", "detection"),
+                            )
+                            alert["incident_id"] = incident_id
                     for ws in list(alert_subscribers):
                         try:
                             import asyncio
                             asyncio.run(ws.send_json(alert))
                         except Exception:
                             pass
+                    if db:
+                        check_escalation(db, item.get("camera_id"), item.get("event_type"), confidence)
             if db:
                 db.commit()
         except Exception:
@@ -380,6 +469,7 @@ async def list_alerts(limit: int = 50, db=Depends(get_db)):
                     "camera_id": a.camera_id,
                     "alert_type": a.alert_type,
                     "confidence": a.confidence,
+                    "severity": a.severity,
                     "status": a.status,
                     "created_at": a.created_at,
                     "acknowledged_by": a.acknowledged_by,
@@ -389,6 +479,138 @@ async def list_alerts(limit: int = 50, db=Depends(get_db)):
         except Exception as exc:
             logger.error("Failed to fetch alerts: %s", exc)
     return []
+
+
+@app.get("/incidents")
+async def list_incidents(limit: int = 50, severity: Optional[str] = None, status: Optional[str] = None, db=Depends(get_db)):
+    if db is not None:
+        try:
+            query = db.query(Incident).order_by(Incident.created_at.desc())
+            if severity:
+                query = query.filter(Incident.severity == severity)
+            if status:
+                query = query.filter(Incident.status == status)
+            incidents = query.limit(limit).all()
+            return [
+                {
+                    "id": i.id,
+                    "camera_id": i.camera_id,
+                    "severity": i.severity,
+                    "status": i.status,
+                    "title": i.title,
+                    "description": i.description,
+                    "event_types": i.event_types,
+                    "created_at": i.created_at,
+                    "updated_at": i.updated_at,
+                    "acknowledged_by": i.acknowledged_by,
+                    "assigned_to": i.assigned_to,
+                    "resolved_at": i.resolved_at,
+                    "notes": i.notes,
+                }
+                for i in incidents
+            ]
+        except Exception as exc:
+            logger.error("Failed to fetch incidents: %s", exc)
+    return []
+
+
+@app.post("/incidents")
+async def create_incident(incident_data: dict, db=Depends(get_db)):
+    if db is None:
+        return {"status": "error", "message": "Database not available"}
+    try:
+        incident = Incident(
+            id=str(uuid.uuid4()),
+            camera_id=incident_data.get("camera_id", ""),
+            severity=incident_data.get("severity", "medium"),
+            status="open",
+            title=incident_data.get("title", "Untitled Incident"),
+            description=incident_data.get("description", ""),
+            event_types=incident_data.get("event_types", ""),
+            created_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            updated_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        )
+        db.add(incident)
+        db.commit()
+        return {"status": "ok", "incident_id": incident.id}
+    except Exception as exc:
+        if db:
+            db.rollback()
+        logger.error("Failed to create incident: %s", exc)
+        return {"status": "error", "message": str(exc)}
+
+
+@app.patch("/incidents/{incident_id}")
+async def update_incident(incident_id: str, update_data: dict, db=Depends(get_db)):
+    if db is None:
+        return {"status": "error", "message": "Database not available"}
+    try:
+        incident = db.query(Incident).filter(Incident.id == incident_id).first()
+        if not incident:
+            return {"status": "error", "message": "Incident not found"}
+        for key in ("status", "severity", "title", "description", "assigned_to", "notes"):
+            if key in update_data:
+                setattr(incident, key, update_data[key])
+        incident.updated_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        if update_data.get("status") == "resolved" and not incident.resolved_at:
+            incident.resolved_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        db.commit()
+        return {"status": "ok"}
+    except Exception as exc:
+        if db:
+            db.rollback()
+        logger.error("Failed to update incident: %s", exc)
+        return {"status": "error", "message": str(exc)}
+
+
+@app.patch("/incidents/{incident_id}/acknowledge")
+async def acknowledge_incident(incident_id: str, data: dict, db=Depends(get_db)):
+    if db is None:
+        return {"status": "error", "message": "Database not available"}
+    try:
+        incident = db.query(Incident).filter(Incident.id == incident_id).first()
+        if not incident:
+            return {"status": "error", "message": "Incident not found"}
+        incident.acknowledged_by = data.get("user", "operator")
+        incident.status = "acknowledged"
+        incident.updated_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        db.commit()
+        return {"status": "ok"}
+    except Exception as exc:
+        if db:
+            db.rollback()
+        logger.error("Failed to acknowledge incident: %s", exc)
+        return {"status": "error", "message": str(exc)}
+
+
+@app.get("/incidents/stats")
+async def incident_stats(db=Depends(get_db)):
+    try:
+        with latest_events_lock:
+            high_conf = len([e for e in latest_events if e.get("confidence", 0) > 0.8])
+            medium_conf = len([e for e in latest_events if e.get("confidence", 0) > 0.7])
+
+        if db is not None:
+            severity_counts = {}
+            for sev in ("critical", "high", "medium", "low"):
+                severity_counts[sev] = db.query(Incident).filter(Incident.severity == sev).count()
+            status_counts = {}
+            for st in ("open", "acknowledged", "investigating", "resolved", "dismissed"):
+                status_counts[st] = db.query(Incident).filter(Incident.status == st).count()
+        else:
+            severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+            status_counts = {"open": 0, "acknowledged": 0, "investigating": 0, "resolved": 0, "dismissed": 0}
+
+        return {
+            "total_events": len(latest_events),
+            "high_confidence_events": high_conf,
+            "medium_confidence_events": medium_conf,
+            "by_severity": severity_counts,
+            "by_status": status_counts,
+        }
+    except Exception as exc:
+        logger.error("Failed to fetch incident stats: %s", exc)
+        return {"total_events": len(latest_events), "by_severity": {}, "by_status": {}}
 
 
 @app.websocket("/ws/alerts")
@@ -540,10 +762,17 @@ async def chat_query(payload: dict):
                     reply = f"There are {len(cams)} registered cameras: " + ", ".join(c.get("camera_id") for c in cams)
                 except Exception:
                     pass
+        elif "incident" in query or "incidents" in query:
+            with latest_events_lock:
+                critical = len([e for e in latest_events if e.get("confidence", 0) > 0.9])
+            reply = f"There are {critical} critical-severity events requiring attention."
+        elif "severity" in query or "level" in query:
+            reply = "Incidents are classified as: critical (90%+ confidence), high (80%+), medium (70%+), low (50%+)."
         elif "alert" in query or "alerts" in query:
             with latest_events_lock:
                 alerts = [e for e in latest_events if e.get("confidence", 0) > 0.7]
-                reply = f"There are {len(alerts)} high-confidence alert events."
+                critical = len([e for e in latest_events if e.get("confidence", 0) > 0.9])
+                reply = f"There are {len(alerts)} high-confidence alert events with {critical} escalated to incidents."
         elif "event" in query or "events" in query:
             with latest_events_lock:
                 recent = sorted(latest_events, key=lambda x: x.get("_received_at", 0), reverse=True)[:5]

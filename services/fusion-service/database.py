@@ -77,6 +77,31 @@ class Alert(Base):
     created_at = Column(String, index=True, nullable=False)
     acknowledged_by = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
+    severity = Column(String, default="medium", index=True)
+
+
+class Incident(Base):
+    __tablename__ = "incidents"
+
+    id = Column(String, primary_key=True)
+    alert_id = Column(String, ForeignKey("alerts.id"), nullable=True)
+    camera_id = Column(String, index=True, nullable=False)
+    severity = Column(String, index=True, nullable=False)
+    status = Column(String, default="open", index=True)
+    title = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    event_types = Column(Text, nullable=True)
+    created_at = Column(String, index=True, nullable=False)
+    updated_at = Column(String, index=True, nullable=False)
+    acknowledged_by = Column(String, nullable=True)
+    assigned_to = Column(String, nullable=True)
+    resolved_at = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("idx_incidents_camera_status", "camera_id", "status"),
+        Index("idx_incidents_severity_created", "severity", "created_at"),
+    )
 
 
 def init_db():
