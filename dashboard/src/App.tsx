@@ -107,18 +107,20 @@ export default function App() {
           setConnected(false)
           return
         }
-        const [eventsData, camerasData, zonesData, alertsData, incidentsData] = await Promise.all([
+        const [eventsData, camerasData, zonesData, alertsData, incidentsData, agentAlertsData, agentIncidentsData] = await Promise.all([
           eventsRes.json(),
           camerasRes.json(),
           zonesRes.ok ? zonesRes.json() : [],
           fetch(`${API_URL}/alerts`).then(r => r.ok ? r.json() : []),
           fetch(`${API_URL}/incidents`).then(r => r.ok ? r.json() : []),
+          fetch(`${API_URL}/agent/alerts`).then(r => r.ok ? r.json() : []),
+          fetch(`${API_URL}/agent/incidents`).then(r => r.ok ? r.json() : []),
         ])
         setEvents(eventsData)
         setCameras(camerasData)
         if (zonesRes.ok) setZones(zonesData)
-        setAlerts(alertsData)
-        setIncidents(incidentsData)
+        setAlerts([...alertsData, ...agentAlertsData])
+        setIncidents([...incidentsData, ...agentIncidentsData])
         setConnected(true)
         connectWebSocket()
       } catch (e) {
