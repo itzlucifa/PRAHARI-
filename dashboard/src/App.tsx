@@ -331,26 +331,66 @@ export default function App() {
         )}
 
         {activeTab === 'Cameras' && (
-          <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/50">
-              <h3 className="text-sm font-semibold text-slate-900">Registered Cameras</h3>
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-slate-900">Cameras</h2>
             </div>
-            <div className="divide-y divide-slate-100">
-              {cameras.map(camera => (
-                <div key={camera.camera_id} className="px-6 py-4 hover:bg-slate-50 transition-colors">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm font-medium text-slate-900">{camera.camera_id}</div>
-                      <div className="text-xs text-slate-500 mt-1">
-                        Last seen: {new Date(camera.last_seen).toLocaleString()}
+
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/50">
+                <h3 className="text-sm font-semibold text-slate-900">Live Camera Grid</h3>
+              </div>
+              <div className="p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {cameras.map(camera => (
+                    <div key={camera.camera_id} className="relative bg-slate-900 rounded-lg overflow-hidden shadow-lg group">
+                      <img
+                        src={`${API_URL}/stream/test_feed/${camera.camera_id}`}
+                        alt={camera.camera_id}
+                        className="w-full h-48 object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = `https://placehold.co/320x192/1e293b/ffffff?text=${camera.camera_id}`
+                        }}
+                      />
+                      <img
+                        src={`${API_URL}/stream/mjpeg/${camera.camera_id}?fps=3`}
+                        alt={`Live ${camera.camera_id}`}
+                        className="absolute inset-0 w-full h-48 object-cover opacity-0 group-hover:opacity-100 transition-opacity"
+                      />
+                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-3">
+                        <div className="text-white text-sm font-medium">{camera.camera_id}</div>
+                        <div className="text-slate-300 text-xs">{camera.event_type || 'online'}</div>
+                      </div>
+                      <div className="absolute top-2 right-2">
+                        <span className="w-2 h-2 bg-green-400 rounded-full shadow-lg animate-pulse"></span>
                       </div>
                     </div>
-                    <span className="px-2 py-1 rounded-full text-xs bg-blue-50 text-blue-700 border border-blue-200 font-medium">
-                      {camera.event_type}
-                    </span>
-                  </div>
+                  ))}
                 </div>
-              ))}
+              </div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/50">
+                <h3 className="text-sm font-semibold text-slate-900">Registered Cameras</h3>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {cameras.map(camera => (
+                  <div key={camera.camera_id} className="px-6 py-4 hover:bg-slate-50 transition-colors">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm font-medium text-slate-900">{camera.camera_id}</div>
+                        <div className="text-xs text-slate-500 mt-1">
+                          Last seen: {new Date(camera.last_seen).toLocaleString()}
+                        </div>
+                      </div>
+                      <span className="px-2 py-1 rounded-full text-xs bg-blue-50 text-blue-700 border border-blue-200 font-medium">
+                        {camera.event_type}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
