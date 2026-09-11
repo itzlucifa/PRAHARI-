@@ -31,6 +31,9 @@ coordinator = ThreatCoordinator(
 )
 coordinator.start()
 
+TRAJECTORY_STORE: dict[str, list[dict]] = defaultdict(list)
+TRAJECTORY_LOCK = threading.Lock()
+
 _alert_lock = threading.Lock()
 _active_alerts: list[dict] = []
 
@@ -383,6 +386,23 @@ async def ingest_event(event: dict, db=Depends(get_db)):
         latest_events.append(event)
         if len(latest_events) > MAX_EVENTS:
             latest_events.pop(0)
+
+    track_id = event.get("track_id", "")
+    if track_id:
+        with TRAJECTORY_LOCK:
+            trajectory_entry = {
+                "camera_id": event.get("camera_id"),
+                "timestamp": event.get("timestamp", ""),
+                "event_type": event.get("event_type", ""),
+                "entity_type": event.get("entity_type", ""),
+                "bbox": event.get("bbox", {}),
+                "confidence": event.get("confidence", 0),
+                "embedding_id": event.get("embedding_id"),
+                "_received_at": now,
+            }
+            TRAJECTORY_STORE[track_id].append(trajectory_entry)
+            if len(TRAJECTORY_STORE[track_id]) > 500:
+                TRAJECTORY_STORE[track_id] = TRAJECTORY_STORE[track_id][-500:]
 
     if db is not None:
         persist_event(db, event)
@@ -771,6 +791,135 @@ async def check_intrusion(payload: dict):
     except Exception as exc:
         logger.error("Intrusion check failed: %s", exc)
     return {"intrusion": False}
+
+
+@app.get("/trajectory/{track_id}")
+async def get_trajectory(track_id: str):
+    """Get the cross-camera trajectory for a tracked entity."""
+    with TRAJECTORY_LOCK:
+        if track_id not in TRAJECTORY_STORE:
+            return {"track_id": track_id, "path": [], "cameras": []}
+
+        path = TRAJECTORY_STORE[track_id]
+        cameras = []
+        seen = set()
+        for entry in path:
+            cam = entry["camera_id"]
+            if cam not in seen:
+                cameras.append(cam)
+                seen.add(cam)
+
+        return {
+            "track_id": track_id,
+            "cameras": cameras,
+            "path": path,
+            "total_events": len(path),
+            "duration_seconds": (path[-1].get("_received_at", 0) - path[0].get("_received_at", 0)) if len(path) > 1 else 0,
+        }
+
+
+@app.get("/trajectory/search")
+async def search_trajectory(camera_id: str = None, entity_type: str = None, min_confidence: float = 0.5):
+    """Search for trajectory paths across cameras."""
+    results = []
+    with TRAJECTORY_LOCK:
+        for track_id, path in TRAJECTORY_STORE.items():
+            if len(path) < 2:
+                continue
+            if camera_id and camera_id not in [e["camera_id"] for e in path]:
+                continue
+            if entity_type and entity_type not in [e["entity_type"] for e in path]:
+                continue
+            if max(e.get("confidence", 0) for e in path) < min_confidence:
+                continue
+
+            cameras = []
+            seen = set()
+            for entry in path:
+                if entry["camera_id"] not in seen:
+                    cameras.append(entry["camera_id"])
+                    seen.add(entry["camera_id"])
+
+            results.append({
+                "track_id": track_id,
+                "cameras": cameras,
+                "entity_type": path[-1].get("entity_type"),
+                "max_confidence": max(e.get("confidence", 0) for e in path),
+                "total_events": len(path),
+                "first_seen": path[0].get("timestamp"),
+                "last_seen": path[-1].get("timestamp"),
+            })
+
+    results.sort(key=lambda x: x["max_confidence"], reverse=True)
+    return {"results": results[:50]}
+
+
+@app.get("/trajectory/predict/{track_id}")
+async def predict_trajectory(track_id: str):
+    """Predict next camera for a tracked entity based on movement patterns."""
+    with TRAJECTORY_LOCK:
+        if track_id not in TRAJECTORY_STORE:
+            return {"track_id": track_id, "prediction": None}
+
+        path = TRAJECTORY_STORE[track_id]
+        if len(path) < 2:
+            return {"track_id": track_id, "prediction": "Insufficient data"}
+
+        camera_sequence = [e["camera_id"] for e in path]
+        unique_cameras = list(dict.fromkeys(camera_sequence))
+
+        if len(unique_cameras) < 2:
+            return {"track_id": track_id, "prediction": "Single camera only"}
+
+        last_cam = unique_cameras[-1]
+        transitions = defaultdict(lambda: defaultdict(int))
+        for i in range(len(unique_cameras) - 1):
+            transitions[unique_cameras[i]][unique_cameras[i + 1]] += 1
+
+        if last_cam in transitions:
+            next_cameras = sorted(transitions[last_cam].items(), key=lambda x: x[1], reverse=True)
+            prediction = next_cameras[0][0] if next_cameras else "unknown"
+            confidence = next_cameras[0][1] / sum(transitions[last_cam].values()) if next_cameras else 0
+        else:
+            prediction = "unknown"
+            confidence = 0.0
+
+        return {
+            "track_id": track_id,
+            "last_camera": last_cam,
+            "predicted_next_camera": prediction,
+            "confidence": round(confidence, 2),
+            "camera_sequence": unique_cameras,
+            "path_length": len(path),
+        }
+
+
+@app.post("/trajectory/link")
+async def link_tracks(payload: dict):
+    """Link two track_ids across cameras (manual cross-camera association)."""
+    track_a = payload.get("track_id_a")
+    track_b = payload.get("track_id_b")
+    if not track_a or not track_b:
+        return {"status": "error", "message": "track_id_a and track_id_b required"}
+
+    with TRAJECTORY_LOCK:
+        path_a = TRAJECTORY_STORE.get(track_a, [])
+        path_b = TRAJECTORY_STORE.get(track_b, [])
+
+        if not path_a or not path_b:
+            return {"status": "error", "message": "One or both tracks not found"}
+
+        merged = path_a + path_b
+        merged.sort(key=lambda x: x.get("_received_at", 0))
+        TRAJECTORY_STORE[f"{track_a}->{track_b}"] = merged
+        del TRAJECTORY_STORE[track_a]
+        del TRAJECTORY_STORE[track_b]
+
+    return {
+        "status": "ok",
+        "merged_track_id": f"{track_a}->{track_b}",
+        "total_events": len(merged),
+    }
 
 
 @app.post("/audio/analyze")
