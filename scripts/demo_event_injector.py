@@ -25,7 +25,7 @@ PLATES = [
 
 TRACKS = [f"track_{i:03d}" for i in range(1, 51)]
 EMBEDDINGS = [f"embed_{uuid.uuid4().hex[:12]}" for _ in range(20)]
-ANOMALIES = ["loitering", "crowd_forming", "abandoned_object", "running", "unusual_movement"]
+ANOMALIES = ["loitering", "crowd_forming", "abandoned_object", "running", "unusual_movement", "gunshot", "glass_break", "scream"]
 
 counter = [0]
 

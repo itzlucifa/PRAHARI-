@@ -1,0 +1,1 @@
+from shared.adapters.audio_detector import AudioEventDetector
