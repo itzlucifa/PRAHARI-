@@ -21,42 +21,53 @@ PRAHARI is the **operating system for public safety** — a unified brain that s
 - **onvif-discovery** service discovers cameras on the network and populates the registry
 
 ### Layer 2 — PERCEIVE
-Five specialized AI adapters run compute-gated inference:
+Six specialized AI adapters run compute-gated inference:
 
 | Adapter | Model | Event Type | Entities | Source Repo |
 |---------|-------|------------|----------|-------------|
 | Detection | YOLOv8n (640x640) | `detection` | person, vehicle, object | ultralytics |
 | ANPR | YOLOv8 + EasyOCR | `anpr_read` | vehicle | indian-anpr |
 | ReID | TorchReID (OSNet) | `reid_match` | person | torchreid |
-| Anomaly | Rule-based | `anomaly` | loitering, crowd, running | anomaly-rules |
+| Anomaly | Rule-based + Audio | `anomaly` | loitering, crowd, running, gunshot, glass_break, scream, loud_bang | anomaly-rules + audio |
 | Face | InsightFace (Buffalo-L) | `face_match` | person | insightface |
+| Audio | FFT spectral analysis | `audio_event` | gunshot, glass_break, scream, loud_bang | built-in |
 
+- **AudioEventDetector** (`shared/adapters/audio_detector.py`): FFT spectral analysis with 10-second cooldown per event type
 - **Threat verification** service: confidence-weighted filtering before alerting
 - **Local MQTT broker**: from-scratch asyncio MQTT 3.1.1 implementation
 
 ### Layer 3 — FUSE
-- **MQTT broker** serves as the event bus (paho-mqtt client)
+- **MQTT broker** serves as the event bus (paho-mqtt client + local asyncio broker)
 - **Fusion Service** (FastAPI): ingests events, maintains hybrid store (PostgreSQL + in-memory), indexes ANPR plates, stores ReID embeddings in Qdrant, pushes alerts via WebSocket
+- **Multi-Agent System** (`shared/agents/coordinator.py`): 5 specialized AI agents for threat coordination
+  - **Watcher** — monitors event streams, detects anomalies
+  - **Detector** — classifies threats, assigns confidence scores
+  - **Notifier** — generates and escalates alerts
+  - **Investigator** — tracks entities across cameras, builds trajectories
+  - **Copilot** — natural language chat interface with 8 tools (trajectory query, scene description, threat detection, event search, suspect search, forensic search, semantic search, zone checks)
 - **Qdrant** stores 512-D ReID embeddings for cross-camera similarity search
 - **PostgreSQL** persists events, alerts, cameras, zones with indexes
 - **Semantic search** endpoint using Qdrant vector similarity
+- **Cross-camera trajectory tracking** with prediction
 - **AI chat assistant** endpoint for natural language querying
 
 ### Layer 4 — ACT
-Seven core tabs + AI Chat:
+Nine core tabs:
 
 | Tab | Features |
 |-----|----------|
 | Dashboard | Stats cards, live event feed, connection status |
 | Cameras | Registered cameras list with status |
+| Live Grid | Real-time MJPEG camera feed previews in grid layout |
 | Zones | Polygon zone management, intrusion detection |
 | Alerts | High-confidence detection alerts |
 | ANPR | License plate recognition logs |
 | ReID | Cross-camera match history |
 | Case Files | Evidence export with SHA-256 hash |
-| AI Chat | Natural language querying about the system |
+| AI Chat | Natural language querying with 8 tools |
 | Settings | System configuration, API URL, connection status |
 
+- **Live Camera Grid** — MJPEG streaming preview of all camera feeds
 - **Privacy service**: blur/unblur with audit logged to officer + case number
 - **Case file service**: forensic PDF/JSON exports with SHA-256 hash chain
 
@@ -69,15 +80,16 @@ All adapters publish `DetectionEvent` objects (defined in `shared/events.py`):
   "event_id": "uuid",
   "camera_id": "camera-01",
   "timestamp": "2026-09-06T08:00:00Z",
-  "event_type": "detection|anpr_read|reid_match|anomaly|face_match",
-  "entity_type": "person|vehicle|object",
+  "event_type": "detection|anpr_read|reid_match|anomaly|face_match|audio_event",
+  "entity_type": "person|vehicle|object|audio",
   "bbox": {"x": 0.1, "y": 0.2, "w": 0.15, "h": 0.3},
   "confidence": 0.92,
   "track_id": "track_001",
   "embedding_id": "optional",
   "plate_text": "DL8C2290",
   "anomaly_label": "optional",
-  "source_repo": "ultralytics|indian-anpr|torchreid|anomaly-rules|insightface",
+  "audio_label": "optional",
+  "source_repo": "ultralytics|indian-anpr|torchreid|anomaly-rules|insightface|builtin",
   "requires_authorization": false,
   "received_at": 1234567890000
 }
@@ -113,8 +125,22 @@ All adapters publish `DetectionEvent` objects (defined in `shared/events.py`):
 | GET | `/zones` | List all camera zones |
 | POST | `/zones/check-intrusion` | Point-in-polygon intrusion detection |
 | POST | `/search/semantic` | Vector similarity search |
+| POST | `/search/events` | Advanced event search (camera_ids, event_types, entity_types, min_confidence) |
+| POST | `/search/forensic` | Forensic search (plate_text, event_types, camera_ids, time range) |
+| POST | `/search/suspect` | Suspect search (description-based) |
 | POST | `/verify/threat` | Confidence-based threat verification |
-| POST | `/chat/query` | Natural language Q&A |
+| POST | `/chat/query` | Natural language Q&A with 8 tools |
+| GET | `/trajectory/{track_id}` | Cross-camera trajectory for a tracked entity |
+| GET | `/trajectory/search` | Search trajectories |
+| GET | `/trajectory/predict/{track_id}` | Predict next location for a tracked entity |
+| POST | `/trajectory/link` | Link trajectory segments |
+| POST | `/audio/analyze` | Audio event analysis (gunshot, glass_break, scream, loud_bang) |
+| GET | `/stream/mjpeg/{camera_id}` | MJPEG video stream |
+| GET | `/stream/test_feed/{camera_id}` | Synthetic test video feed |
+| POST | `/incidents/{incident_id}/export` | Export incident with SHA-256 hash chain |
+| GET | `/agent/alerts` | Agent-generated alerts |
+| GET | `/agent/incidents` | Agent-generated incidents |
+| GET | `/agent/events` | Agent coordination events |
 
 ### WebSocket API
 
@@ -136,11 +162,15 @@ All adapters publish `DetectionEvent` objects (defined in `shared/events.py`):
 prahari/
 ├── README.md                          # Project overview + quick start
 ├── VISION.md                          # This file — complete technical brain
+├── brain.md                           # Development roadmap & implementation notes
 ├── LICENSE                            # Custom open-use license (2026 Sumit Nawale)
 ├── CHANGELOG.md                       # Version history
-├── docker-compose.yml                 # 15-service orchestration
+├── docker-compose.yml                 # Service orchestration
 ├── .gitignore                         # Ignores caches, binaries, models
 ├── requirements.txt                   # Root Python dependencies
+├── install.bat / install.sh           # One-click installers
+├── SECURITY.md
+├── CONTRIBUTING.md
 │
 ├── config/
 │   ├── camera-registry.json           # Camera registry with zones
@@ -151,14 +181,20 @@ prahari/
 │   ├── __init__.py
 │   ├── events.py                      # DetectionEvent dataclass + MQTT topics
 │   ├── adapter_base.py                # BaseAdapter ABC
-│   └── event_bus.py                   # In-memory asyncio event bus
+│   ├── event_bus.py                   # In-memory asyncio event bus
+│   ├── adapters/
+│   │   ├── __init__.py
+│   │   └── audio_detector.py          # FFT-based AudioEventDetector
+│   └── agents/
+│       ├── __init__.py
+│       └── coordinator.py             # 5-agent coordination system
 │
-├── services/                          # 10 Python microservices
+├── services/                          # Python microservices
 │   ├── __init__.py
 │   ├── fusion-service/
-│   │   ├── app.py                     # FastAPI REST + WebSocket
+│   │   ├── app.py                     # FastAPI REST + WebSocket + agents
 │   │   ├── database.py                # SQLAlchemy models + PostgreSQL
-│   │   ├── run.py                     # Local startup script
+│   │   ├── run.py                     # Local startup script (PYTHONPATH wrapper)
 │   │   ├── requirements.txt
 │   │   └── Dockerfile
 │   ├── adapter_detection/
@@ -171,7 +207,7 @@ prahari/
 │   │   ├── adapter.py                 # TorchReID feature extraction
 │   │   └── Dockerfile
 │   ├── adapter_anomaly/
-│   │   ├── adapter.py                 # Loitering/crowd/unusual movement
+│   │   ├── adapter.py                 # Loitering/crowd/audio anomalies
 │   │   └── Dockerfile
 │   ├── adapter_face/
 │   │   ├── adapter.py                 # InsightFace watchlist matching
@@ -193,9 +229,11 @@ prahari/
 │   ├── public/
 │   │   └── prahari-logo.png           # Logo
 │   ├── src/
-│   │   ├── App.tsx                    # Main UI (9 tabs)
+│   │   ├── App.tsx                    # Main UI (9 tabs + live grid)
 │   │   ├── main.tsx
-│   │   └── index.css
+│   │   ├── index.css
+│   │   ├── types.ts
+│   │   └── components/                # UI components
 │   ├── Dockerfile
 │   ├── package.json
 │   ├── tsconfig.json
@@ -204,51 +242,30 @@ prahari/
 ├── scripts/                           # Operational/demo scripts
 │   ├── start_all.bat
 │   ├── start_demo.bat
-│   ├── demo_event_injector.py         # Syntatic event injection
+│   ├── demo_event_injector.py         # Synthetic event injection
 │   ├── demo_launcher.py               # Interactive demo orchestrator
 │   ├── local_mqtt_broker.py           # asyncio MQTT 3.1.1 broker
-│   └── live_demo.py                   # Unified YOLOv8 live demo
+│   ├── live_demo.py                   # Unified YOLOv8 live demo
+│   ├── optimize_onnx.py               # ONNX model optimizer
+│   └── detect_hardware.py             # GPU/CUDA/TensorRT/CoreML/Coral detection
 │
 ├── models/                            # Gitignored model weights
-│   └── yolov8n.pt
-│
 ├── test_feeds/                        # Gitignored test video files
-│   ├── camera01.mp4
-│   ├── camera02.mp4
-│   └── camera03.mp4
-│
 ├── tests/                             # Test suite
-│   ├── test_spine.py                  # Schema validation
-│   ├── test_detection_adapter.py
-│   ├── test_anomaly_adapter.py
-│   ├── test_qdrant.py
-│   ├── test_e2e_pipeline.py
-│   └── ...
-│
 ├── tools/                             # go2rtc binary
-│   └── go2rtc/
-│       └── go2rtc.exe
-│
 ├── docs/                              # Documentation
 │   ├── ARCHITECTURE.md                # 4-layer architecture
 │   ├── DEVELOPER_GUIDE.md             # Setup + coding standards
 │   ├── SERVICE_REFERENCE.md           # API + service reference
 │   ├── DEPLOYMENT.md                  # Docker + production guide
-│   ├── DEMO_PLAN.md                   # Demo script
-│   ├── DEMO_README.md                 # Quick demo guide
 │   ├── scale-one-pager.md             # Cost scaling document
-│   └── assets/
-│       ├── banner.png                 # Project logo
-│       ├── demo-screenshot-1.jpg
-│       ├── demo-screenshot-2.jpg
-│       └── demo-screenshot-3.jpg
-│
+│   └── assets/                        # Images, screenshots
 └── .github/                           # GitHub config
-    ├── workflows/ci.yml               # CI pipeline
-    ├── ISSUE_TEMPLATE/
-    │   ├── bug_report.md
-    │   └── feature_request.md
-    └── PULL_REQUEST_TEMPLATE.md
+    ├── workflows/
+    │   └── ci.yml                     # CI pipeline (Python + TypeScript)
+    └── ISSUE_TEMPLATE/
+        ├── bug_report.md
+        └── feature_request.md
 ```
 
 ## 7. Tech Stack
@@ -361,14 +378,12 @@ Before an event becomes an alert:
 - Created missing Dockerfiles for case-file, privacy, onvif-discovery services
 
 ### Documentation Suite
-- `README.md` — project overview, badges, screenshots, YouTube demo link
+- `README.md` — project overview, badges, quick start
 - `VISION.md` — this file, complete technical brain
 - `docs/ARCHITECTURE.md` — 4-layer architecture deep dive
 - `docs/DEVELOPER_GUIDE.md` — setup, coding standards, adding adapters
 - `docs/SERVICE_REFERENCE.md` — all API endpoints, services, MQTT topics
 - `docs/DEPLOYMENT.md` — Docker, environment variables, production checklist
-- `docs/DEMO_PLAN.md` — 5-7 minute demo script
-- `docs/DEMO_README.md` — quick demo guide
 - `docs/scale-one-pager.md` — compute-gated cost model (₹40/cam/month at 80K)
 
 ## 15. Code Quality Improvements
@@ -403,11 +418,28 @@ Before an event becomes an alert:
 | /cameras | GET | ✅ Returns camera registry |
 | /zones | GET | ✅ Returns polygon zones |
 | /alerts | GET | ✅ Returns alert list |
-| /chat/query | POST | ✅ Returns natural language reply |
+| /chat/query | POST | ✅ Returns natural language reply (8 tools) |
 | /verify/threat | POST | ✅ Returns verification result |
 | /zones/check-intrusion | POST | ✅ Point-in-polygon detection |
 | /search/semantic | POST | ✅ Vector similarity search |
+| /search/events | POST | ✅ Advanced event search |
+| /search/forensic | POST | ✅ Forensic search |
+| /search/suspect | POST | ✅ Suspect search |
+| /trajectory/{track_id} | GET | ✅ Cross-camera trajectory |
+| /trajectory/predict/{track_id} | GET | ✅ Trajectory prediction |
+| /audio/analyze | POST | ✅ Audio event detection |
+| /stream/mjpeg/{camera_id} | GET | ✅ MJPEG video stream |
+| /stream/test_feed/{camera_id} | GET | ✅ Synthetic test feed |
+| /incidents/{incident_id}/export | POST | ✅ SHA-256 hash export |
 | /ws/alerts | WebSocket | ✅ Real-time alert stream |
+
+### Agent Tests
+| Test | Description | Status |
+|------|-------------|--------|
+| 5-agent coordination | Watcher, Detector, Notifier, Investigator, Copilot all respond | ✅ |
+| Agent alerts | 33 alerts with correct severity levels | ✅ |
+| Trajectory tracking | Track tracked across 3 cameras (cam-01 → cam-02 → cam-03) | ✅ |
+| Audio detection | Gunshot detected as loud_bang (conf 0.95, 0 false positives) | ✅ |
 
 ### Build Verification
 - Python syntax: `py_compile` passes for all service files
@@ -447,8 +479,8 @@ Before an event becomes an alert:
 
 | Feature | PRAHARI | DeepCamera | Nurby | Sentigon | Overseer | Locus Vision |
 |---------|---------|------------|-------|----------|----------|--------------|
-| Multi-agent pipeline | Partial (chat) | ✅ | ✅ | ✅ (12 agents) | ✅ | Partial |
-| Adversarial verifier | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| Multi-agent pipeline | Partial (chat) | ✅ | ✅ | ✅ (5 agents) | ✅ (12 agents) | ✅ | Partial |
+| Adversarial verifier | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ |
 | Canvas zone editor | ✅ Added (this release) | ✅ | ✅ | ✅ | ❌ | ✅ |
 | Hardware auto-detect | ✅ Added (this release) | ✅ | ✅ | ✅ | ❌ | ✅ |
 | ONNX optimization | ✅ Added (this release) | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -457,8 +489,11 @@ Before an event becomes an alert:
 | MCP integrations | ❌ | ❌ | ✅ | ✅ | ✅ | ❌ |
 | One-command install | ✅ Added (this release) | ❌ | ❌ | ✅ | ❌ | ❌ |
 | CLIP search | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Agentic chat | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Agentic chat | ✅ (8 tools) | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Cross-camera ReID | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Trajectory tracking | ✅ Added (this release) | ❌ | Partial | ✅ | ✅ | Partial |
+| Audio event detection | ✅ Added (this release) | Partial | Partial | Partial | ❌ | Partial |
+| MJPEG live grid | ✅ Added (this release) | ❌ | ❌ | Partial | ❌ | Partial |
 | Compute-gated AI | ✅ (unique) | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Vendor-agnostic | ✅ | ✅ | Limited | ✅ | ✅ | Limited |
 
@@ -474,12 +509,12 @@ Before an event becomes an alert:
 
 ### Improvement Opportunities Identified
 
-| Opportunity | Source Project | Priority |
-|-------------|---------------|----------|
-| Multi-agent orchestration layer | Sentigon (12 agents) | Medium |
+| Opportunity | Source Project | Status |
+|-------------|---------------|--------|
+| Multi-agent orchestration layer | Sentigon (12 agents) | ✅ Implemented (5 agents) |
 | WebRTC streaming | SmartSurv | Short-term |
 | MCP server for integrations | Nurby, Lumenta | Short-term |
-| Trajectory prediction | VisionAI-Aegis | Long-term |
+| Trajectory prediction | VisionAI-Aegis | ✅ Implemented (basic) |
 | Local LLM via Ollama | DeepCamera | Short-term |
 | Batch video processing | Locus Vision | Short-term |
 | Desktop companion app | DeepCamera/Aegis | Long-term |

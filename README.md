@@ -13,23 +13,18 @@ Built by [Sumit Nawale](https://www.linkedin.com/in/sumit-nawale-25274638b)
 [![Python](https://img.shields.io/badge/python-3.10%2B-green.svg)](https://www.python.org/)
 [![React](https://img.shields.io/badge/react-18-61DAFB.svg)](https://react.dev/)
 [![Docker](https://img.shields.io/badge/docker-compose-ready-blue.svg)](https://docs.docker.com/compose/)
-[![Status](https://img.shields.io/badge/status-v0.3.0%20production-success.svg)](https://github.com/itzlucifa/PRAHARI-)
+[![Status](https://img.shields.io/badge/status-v0.3.1%20production-success.svg)](https://github.com/itzlucifa/PRAHARI-)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![Demo](https://img.shields.io/badge/demo-youtube-red.svg)](https://www.youtube.com/watch?v=_xu8fuoak5k)
 
 ---
 
-<img src="docs/assets/banner.png" width="800" alt="PRAHARI Logo">
+<img src="dashboard/public/prahari-logo.png" width="200" alt="PRAHARI Logo">
 
 <br>
 
 ### 🎥 Watch the Live Demo
 [![Watch the video](https://img.youtube.com/vi/_xu8fuoak5k/hqdefault.jpg)](https://www.youtube.com/watch?v=_xu8fuoak5k)
-
-### 📸 Live Demonstration
-<img src="docs/assets/demo-screenshot-1.jpg" width="600" alt="PRAHARI Dashboard">
-<img src="docs/assets/demo-screenshot-2.jpg" width="600" alt="Camera Feed">
-<img src="docs/assets/demo-screenshot-3.jpg" width="600" alt="Real-time Alerts">
 
 ---
 
@@ -41,6 +36,7 @@ Built by [Sumit Nawale](https://www.linkedin.com/in/sumit-nawale-25274638b)
 - [Repository Structure](#repository-structure)
 - [Quick Start](#quick-start)
 - [API Endpoints](#api-endpoints)
+- [Multi-Agent System](#multi-agent-system)
 - [Documentation](#documentation)
 - [Deployment](#deployment)
 - [License](#license)
@@ -64,30 +60,37 @@ PRAHARI follows a proven 4-layer architecture:
 
 ```
 Camera → go2rtc → Adapters → MQTT → Fusion Service → Dashboard
-                              ↓
-                         Qdrant (ReID vectors)
-                              ↓
-                        PostgreSQL (events)
+                               ↓
+                          Qdrant (ReID vectors)
+                               ↓
+                         PostgreSQL (events)
+                               ↓
+                    Multi-Agent System (Watcher, Detector,
+                      Notifier, Investigator, Copilot)
 ```
 
 | Layer | Purpose | Technologies |
 |-------|---------|-------------|
 | **UNIFY** | Normalize any vendor camera stream | go2rtc, ONVIF discovery |
-| **PERCEIVE** | Run AI inference (compute-gated) | YOLOv8, EasyOCR, TorchReID, InsightFace |
-| **FUSE** | Correlate events across cameras | MQTT, FastAPI, Qdrant, PostgreSQL |
-| **ACT** | Control room dashboard + exports | React, TypeScript, WebSocket |
+| **PERCEIVE** | Run AI inference (compute-gated) | YOLOv8, EasyOCR, TorchReID, InsightFace, Audio Detection |
+| **FUSE** | Correlate events across cameras | MQTT, FastAPI, Qdrant, PostgreSQL, Multi-Agent System |
+| **ACT** | Control room dashboard + exports | React, TypeScript, WebSocket, MJPEG streaming |
 
 ---
 
 ## Key Features
 
 - ✅ **Vendor-agnostic ingestion** — any RTSP/WebRTC camera
-- ✅ **5 AI event types** — detection, ANPR, ReID, anomaly, face match
+- ✅ **6 AI event types** — detection, ANPR, ReID, anomaly, face match, audio events
+- ✅ **Multi-agent threat coordination** — 5 specialized AI agents (Watcher, Detector, Notifier, Investigator, Copilot)
+- ✅ **Audio event detection** — gunshot, glass break, scream, loud bang via FFT spectral analysis
+- ✅ **Cross-camera trajectory tracking** — person/vehicle tracking across multiple cameras with prediction
 - ✅ **PostgreSQL persistence** — durable event storage with fallback
 - ✅ **Zone editor** — polygon-based intrusion detection
-- ✅ **AI chat assistant** — natural language querying
+- ✅ **AI chat assistant** — natural language querying with 8 tools
 - ✅ **Threat verification** — confidence-based alert filtering
-- ✅ **Real-time dashboard** — WebSocket alerts with 9 tabs
+- ✅ **Semantic search** — vector similarity search via Qdrant
+- ✅ **Real-time dashboard** — WebSocket alerts, live MJPEG camera grid, 9 tabs
 - ✅ **Court-admissible exports** — SHA-256 hash chain
 - ✅ **Privacy by design** — blur/unblur with audit trail
 - ✅ **Compute-gated economics** — ~₹40/camera/month at 80K scale
@@ -99,12 +102,16 @@ Camera → go2rtc → Adapters → MQTT → Fusion Service → Dashboard
 ```
 prahari/
 ├── README.md                    # This file
-├── VISION.md                    # Complete technical brain
+├── VISION.md                    # Complete technical brain (437 lines)
 ├── CHANGELOG.md                 # Version history
+├── brain.md                     # Development roadmap & notes
 ├── LICENSE                      # Custom open-use license
-├── docker-compose.yml           # 15-service orchestration
+├── docker-compose.yml           # Service orchestration
 ├── .gitignore
 ├── requirements.txt
+├── install.bat / install.sh     # One-click installers
+├── SECURITY.md
+├── CONTRIBUTING.md
 │
 ├── config/                      # Runtime configuration
 │   ├── camera-registry.json     # Cameras + zones
@@ -113,25 +120,48 @@ prahari/
 │
 ├── shared/                      # Shared library
 │   ├── events.py                # Canonical DetectionEvent schema
-│   └── adapter_base.py          # BaseAdapter ABC
+│   ├── adapter_base.py          # BaseAdapter ABC
+│   ├── event_bus.py             # Local MQTT-like event bus
+│   ├── adapters/
+│   │   └── audio_detector.py    # FFT-based AudioEventDetector
+│   └── agents/
+│       ├── __init__.py
+│       └── coordinator.py       # 5-agent coordination system
 │
-├── services/                    # 10 Python microservices
+├── services/                    # Python microservices
 │   ├── fusion-service/          # FastAPI REST + WebSocket + DB
+│   │   ├── app.py               # Main API (1486 lines)
+│   │   ├── database.py          # SQLAlchemy models
+│   │   ├── run.py               # PYTHONPATH wrapper
+│   │   └── requirements.txt
 │   ├── adapter_detection/       # YOLOv8 detection
 │   ├── adapter_anpr/            # Indian ANPR (YOLO + EasyOCR)
 │   ├── adapter_reid/            # Cross-camera ReID
-│   ├── adapter_anomaly/         # Loitering/crowd detection
+│   ├── adapter_anomaly/         # Loitering/crowd/audio detection
 │   ├── adapter_face/            # InsightFace watchlist
 │   ├── api-gateway/             # API gateway
 │   ├── case-file/               # Evidence export
 │   ├── privacy/                 # Blur/unblur audit
-│   └── onvif-discovery/         # Camera discovery
+│   ├── onvif-discovery/         # Camera discovery
+│   └── __init__.py
 │
 ├── dashboard/                   # React + TypeScript frontend
-│   ├── src/App.tsx              # 9-tab dashboard
+│   ├── src/
+│   │   ├── App.tsx              # 9-tab dashboard with live camera grid
+│   │   ├── main.tsx
+│   │   ├── types.ts
+│   │   └── components/
 │   └── public/
+│       └── prahari-logo.png
 │
 ├── scripts/                     # Operational scripts
+│   ├── demo_event_injector.py   # Real-time demo event generator
+│   ├── demo_launcher.py         # Interactive demo orchestrator
+│   ├── local_mqtt_broker.py     # Local MQTT broker
+│   ├── live_demo.py             # Live camera demo
+│   ├── optimize_onnx.py         # ONNX model optimizer
+│   └── start_demo.bat / .sh
+│
 ├── models/                      # Model weights (gitignored)
 ├── test_feeds/                  # Sample videos (gitignored)
 ├── tests/                       # Test suite
@@ -141,10 +171,10 @@ prahari/
 │   ├── DEVELOPER_GUIDE.md
 │   ├── SERVICE_REFERENCE.md
 │   ├── DEPLOYMENT.md
-│   ├── DEMO_PLAN.md
 │   └── scale-one-pager.md
 └── .github/                     # CI/CD + templates
-    ├── workflows/ci.yml
+    ├── workflows/
+    │   └── ci.yml               # TypeScript + Python linting
     └── ISSUE_TEMPLATE/
 ```
 
@@ -155,7 +185,7 @@ prahari/
 ### Docker (Recommended)
 ```bash
 docker compose up --build
-# Dashboard: http://localhost:3000
+# Dashboard: http://localhost:5173
 # API:       http://localhost:8000/docs
 ```
 
@@ -171,7 +201,16 @@ cd services/fusion-service && python run.py
 cd dashboard && npm install && npm run dev
 
 # Terminal 4 — Demo Events
-python scripts/demo_event_injector.py
+python scripts/demo_event_injector.py --realtime
+```
+
+### Verification
+```bash
+# Health check
+curl http://localhost:8000/health
+
+# Dashboard
+# http://localhost:5173
 ```
 
 ---
@@ -188,10 +227,40 @@ python scripts/demo_event_injector.py
 | `GET` | `/alerts?limit=50` | List alerts |
 | `GET` | `/zones` | List polygon zones |
 | `POST` | `/zones/check-intrusion` | Intrusion detection |
+| `POST` | `/chat/query` | AI chat assistant (8 tools) |
 | `POST` | `/verify/threat` | Threat verification |
-| `POST` | `/chat/query` | AI chat assistant |
 | `POST` | `/search/semantic` | Vector search |
+| `POST` | `/search/events` | Advanced event search |
+| `POST` | `/search/forensic` | Forensic search |
+| `POST` | `/search/suspect` | Suspect search |
+| `GET` | `/trajectory/{track_id}` | Cross-camera trajectory |
+| `GET` | `/trajectory/search` | Trajectory search |
+| `GET` | `/trajectory/predict/{track_id}` | Trajectory prediction |
+| `POST` | `/trajectory/link` | Link trajectories |
+| `POST` | `/audio/analyze` | Audio event analysis |
+| `GET` | `/stream/mjpeg/{camera_id}` | MJPEG video stream |
+| `GET` | `/stream/test_feed/{camera_id}` | Test video feed |
+| `POST` | `/incidents/{incident_id}/export` | Export incident (SHA-256) |
+| `GET` | `/agent/alerts` | Agent-generated alerts |
+| `GET` | `/agent/incidents` | Agent-generated incidents |
+| `GET` | `/agent/events` | Agent coordination events |
 | `WS` | `/ws/alerts` | Real-time alerts |
+
+---
+
+## Multi-Agent System
+
+PRAHARI's fusion service includes a 5-agent threat coordination system:
+
+| Agent | Role |
+|-------|------|
+| **Watcher** | Monitors event streams, detects anomalies |
+| **Detector** | Classifies threats, assigns confidence scores |
+| **Notifier** | Generates and escalates alerts |
+| **Investigator** | Tracks entities across cameras, builds trajectories |
+| **Copilot** | Natural language chat interface, 8 tools for querying |
+
+The AI Chat Assistant (`/chat/query`) supports natural language queries for tracking, threats, events, cameras, ANPR plates, and scene descriptions.
 
 ---
 
@@ -199,12 +268,13 @@ python scripts/demo_event_injector.py
 
 | Document | Description |
 |----------|-------------|
-| [VISION.md](VISION.md) | Complete technical brain |
+| [VISION.md](VISION.md) | Complete technical brain (437 lines) |
+| [brain.md](brain.md) | Development roadmap & implementation notes |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | 4-layer architecture guide |
 | [DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) | Setup + coding standards |
 | [SERVICE_REFERENCE.md](docs/SERVICE_REFERENCE.md) | API + service reference |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Docker + production guide |
-| [DEMO_PLAN.md](docs/DEMO_PLAN.md) | 5-7 minute demo script |
+| [scale-one-pager.md](docs/scale-one-pager.md) | Scale economics summary |
 
 ---
 

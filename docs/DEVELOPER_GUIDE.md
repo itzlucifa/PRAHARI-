@@ -20,6 +20,7 @@ cd prahari
 
 ```bash
 pip install -r requirements.txt
+cd services/fusion-service && pip install -r requirements.txt
 ```
 
 ### 3. Dashboard
@@ -54,8 +55,7 @@ python local_mqtt_broker.py
 **Terminal 2 — Fusion Service:**
 ```bash
 cd services/fusion-service
-set PYTHONPATH=C:\hackethon\prahari
-python -m uvicorn app:app --host 0.0.0.0 --port 8000
+python run.py
 ```
 
 **Terminal 3 — Dashboard:**
@@ -109,15 +109,18 @@ See [README.md](../README.md#repository-structure) for the full tree.
 5. Add Dockerfile and requirements.txt
 6. Register in `docker-compose.yml`
 
-## Testing
+### Testing
 
 ```bash
-# Python tests
-pytest tests/
+# Python syntax check
+python -c "import ast; ast.parse(open('services/fusion-service/app.py').read())"
 
 # Dashboard type check
 cd dashboard
 npx tsc --noEmit
+
+# Run tests
+pytest tests/
 ```
 
 ## API Documentation
@@ -125,3 +128,21 @@ npx tsc --noEmit
 FastAPI auto-generates interactive docs:
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
+
+## Multi-Agent Development
+
+The agent coordinator (`shared/agents/coordinator.py`) provides 5 agents for threat coordination. To extend:
+
+1. **Add a new agent** — subclass `BaseAgent` in `coordinator.py`
+2. **Add a Copilot tool** — implement a method on `CopilotAgent` and register it in the `tools` dict
+3. **Agent queries** — the `query()` method routes natural language to the appropriate tool
+
+## Adding Audio Event Types
+
+1. Add the event type to `EVENT_PROFILES` in `shared/adapters/audio_detector.py`
+2. Define the frequency range and energy threshold
+3. Update the `detect()` method to handle the new profile
+
+## Trajectory Tracking
+
+The `TRAJECTORY_STORE` in `app.py` maintains cross-camera paths. Track IDs from adapter events are automatically linked by the Investigator agent. Use `/trajectory/{track_id}` to retrieve a full path.

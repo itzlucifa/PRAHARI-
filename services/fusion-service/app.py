@@ -1103,15 +1103,12 @@ async def chat_query(payload: dict):
             with latest_events_lock:
                 plates = [e for e in latest_events if e.get("event_type") == "anpr_read"][:5]
             reply = "Recent plates: " + ", ".join(e.get("plate_text") for e in plates if e.get("plate_text"))
-        elif "track" in query_lower or "path" in query_lower or "where" in query_lower:
-            reply = "I can track persons and vehicles across cameras using ReID. Specify a track_id or person description."
-        elif "threat" in query_lower or "danger" in query_lower:
-            with latest_events_lock:
-                threats = [e for e in latest_events if (e.get("confidence", 0) > 0.85 or e.get("event_type") in ("anomaly", "face_match"))]
-            if threats:
-                reply = f"Found {len(threats)} high-confidence threats. Top threat: {threats[0].get('event_type')} at {threats[0].get('camera_id')}."
-            else:
-                reply = "No active high-confidence threats detected."
+        elif "track" in query_lower or "path" in query_lower or "where" in query_lower or "trajectory" in query_lower:
+            reply = coordinator.query(query)
+        elif "threat" in query_lower or "danger" in query_lower or "risk" in query_lower:
+            reply = coordinator.query(query)
+        elif "find" in query_lower or "search" in query_lower or "describe" in query_lower or "scene" in query_lower:
+            reply = coordinator.query(query)
         else:
             reply = coordinator.query(query)
     except Exception as exc:
@@ -1278,4 +1275,209 @@ async def export_incident(incident_id: str, db=Depends(get_db)):
             "hash_algorithm": "SHA-256",
             "event_count": len(case_data.get("events", [])),
         },
+    }
+
+
+@app.post("/search/events")
+async def search_events(filters: dict):
+    """Advanced event search with filters (inspired by Vision Labs forensic search)."""
+    camera_ids = filters.get("camera_ids", [])
+    event_types = filters.get("event_types", [])
+    entity_types = filters.get("entity_types", [])
+    min_confidence = filters.get("min_confidence", 0.0)
+    max_confidence = filters.get("max_confidence", 1.0)
+    start_time = filters.get("start_time")
+    end_time = filters.get("end_time")
+    track_ids = filters.get("track_ids", [])
+    limit = min(filters.get("limit", 100), 1000)
+
+    with latest_events_lock:
+        results = []
+        for event in latest_events:
+            if camera_ids and event.get("camera_id") not in camera_ids:
+                continue
+            if event_types and event.get("event_type") not in event_types:
+                continue
+            if entity_types and event.get("entity_type") not in entity_types:
+                continue
+
+            confidence = event.get("confidence", 0)
+            if confidence < min_confidence or confidence > max_confidence:
+                continue
+
+            if track_ids and event.get("track_id") not in track_ids:
+                continue
+
+            ts = event.get("_received_at", 0)
+            if start_time and ts < start_time:
+                continue
+            if end_time and ts > end_time:
+                continue
+
+            results.append(event)
+
+    results = sorted(results, key=lambda x: x.get("_received_at", 0), reverse=True)[:limit]
+
+    timeline = {}
+    for r in results:
+        hour = r.get("timestamp", "")[:13] if r.get("timestamp") else "unknown"
+        if hour not in timeline:
+            timeline[hour] = defaultdict(int)
+        timeline[hour][r.get("event_type", "unknown")] += 1
+
+    stats = {
+        "total_results": len(results),
+        "by_camera": defaultdict(int),
+        "by_event_type": defaultdict(int),
+        "by_entity_type": defaultdict(int),
+        "avg_confidence": sum(r.get("confidence", 0) for r in results) / len(results) if results else 0,
+    }
+    for r in results:
+        stats["by_camera"][r.get("camera_id", "unknown")] += 1
+        stats["by_event_type"][r.get("event_type", "unknown")] += 1
+        stats["by_entity_type"][r.get("entity_type", "unknown")] += 1
+
+    return {
+        "results": results,
+        "stats": {k: dict(v) if isinstance(v, defaultdict) else v for k, v in stats.items()},
+        "timeline": {k: dict(v) for k, v in timeline.items()},
+    }
+
+
+@app.post("/search/forensic")
+async def forensic_search(payload: dict):
+    """Forensic timeline analysis — find events related to a specific entity or time window."""
+    track_id = payload.get("track_id")
+    plate_text = payload.get("plate_text")
+    person_id = payload.get("person_id")
+    start_time = payload.get("start_time")
+    end_time = payload.get("end_time")
+    event_types = payload.get("event_types", ["detection", "anomaly", "reid_match", "face_match", "anpr_read"])
+
+    with latest_events_lock:
+        results = []
+        for event in latest_events:
+            match = False
+            if track_id and event.get("track_id") == track_id:
+                match = True
+            if plate_text and event.get("plate_text") == plate_text:
+                match = True
+            if person_id and event.get("embedding_id") == person_id:
+                match = True
+            if event_types and event.get("event_type") not in event_types:
+                match = False
+
+            if not match:
+                continue
+
+            ts = event.get("_received_at", 0)
+            if start_time and ts < start_time:
+                continue
+            if end_time and ts > end_time:
+                continue
+
+            results.append(event)
+
+    results = sorted(results, key=lambda x: x.get("_received_at", 0))
+
+    if track_id:
+        path = TRAJECTORY_STORE.get(track_id, [])
+        cameras_visited = list(dict.fromkeys(e["camera_id"] for e in path)) if path else []
+    else:
+        cameras_visited = list(dict.fromkeys(r.get("camera_id") for r in results))
+
+    return {
+        "type": "forensic",
+        "search_criteria": {
+            "track_id": track_id,
+            "plate_text": plate_text,
+            "person_id": person_id,
+            "time_range": [start_time, end_time],
+        },
+        "events_found": len(results),
+        "cameras_involved": cameras_visited,
+        "timeline": [
+            {
+                "timestamp": e.get("timestamp"),
+                "camera_id": e.get("camera_id"),
+                "event_type": e.get("event_type"),
+                "entity_type": e.get("entity_type"),
+                "confidence": e.get("confidence"),
+                "anomaly_label": e.get("anomaly_label"),
+                "plate_text": e.get("plate_text"),
+            }
+            for e in results
+        ],
+        "related_incidents": [i for i in coordinator.get_incidents() if i.get("camera_id") in cameras_visited][:10],
+    }
+
+
+@app.post("/search/suspect")
+async def search_suspect(payload: dict):
+    """Search for a suspect/vehicle across all cameras (CLIP-style appearance search)."""
+    description = payload.get("description", "").lower()
+    camera_id = payload.get("camera_id")
+    time_window = payload.get("time_window", 300)
+
+    with latest_events_lock:
+        now = time.time()
+        recent = [e for e in latest_events if (now - e.get("_received_at", 0)) < time_window]
+
+    if camera_id:
+        recent = [e for e in recent if e.get("camera_id") == camera_id]
+
+    matches = []
+    for event in recent:
+        etype = event.get("event_type", "")
+        entity = event.get("entity_type", "")
+        label = event.get("anomaly_label", "")
+        plate = event.get("plate_text", "")
+
+        score = 0.0
+        if "person" in description and entity == "person":
+            score += 0.3
+        if "vehicle" in description and entity == "vehicle":
+            score += 0.3
+        if "man" in description and entity == "person":
+            score += 0.2
+        if "woman" in description or "female" in description:
+            score += 0.2
+        if "child" in description or "kid" in description:
+            score += 0.2
+        if "uniform" in description:
+            score += 0.1
+        if "helmet" in description:
+            score += 0.1
+        if "package" in description or "bag" in description or "backpack" in description:
+            score += 0.15
+        if "red" in description or "blue" in description:
+            score += 0.1
+
+        if etype == "reid_match" and ("person" in description or "man" in description or "woman" in description):
+            score += 0.5
+        if etype == "anpr_read" and ("vehicle" in description or "car" in description):
+            score += 0.4
+        if etype == "anomaly" and ("running" in description or "loitering" in description):
+            score += 0.3
+        if etype == "face_match" and ("unauthorized" in description or "unknown" in description):
+            score += 0.5
+
+        if score >= 0.2:
+            matches.append({
+                "event_id": event.get("event_id"),
+                "camera_id": event.get("camera_id"),
+                "timestamp": event.get("timestamp"),
+                "event_type": etype,
+                "entity_type": entity,
+                "confidence": event.get("confidence", 0),
+                "score": round(score, 2),
+                "anomaly_label": label,
+                "plate_text": plate,
+            })
+
+    matches.sort(key=lambda x: x["score"], reverse=True)
+    return {
+        "query": description,
+        "matches_found": len(matches),
+        "results": matches[:50],
     }

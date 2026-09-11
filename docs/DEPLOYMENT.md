@@ -16,12 +16,32 @@ docker compose up --build
 
 This starts:
 - go2rtc (port 1984, 8554, 8555)
-- Mosquitto MQTT (port 1883, 9001)
+- Mosquitto MQTT (port 1883, 9001, 9003)
 - Qdrant (port 6333, 6334)
 - PostgreSQL (port 5432)
 - Fusion Service (port 8000)
 - All adapters
 - Dashboard (port 3000)
+
+## Local Development
+
+For rapid iteration without Docker:
+
+```bash
+# Terminal 1 — MQTT Broker
+cd scripts && python local_mqtt_broker.py
+
+# Terminal 2 — Fusion Service
+cd services/fusion-service && python run.py
+
+# Terminal 3 — Dashboard
+cd dashboard && npm run dev
+
+# Terminal 4 — Demo Events
+cd .. && python scripts/demo_event_injector.py --realtime
+```
+
+The fusion service operates in fallback mode when PostgreSQL/Qdrant are unavailable, using in-memory stores.
 
 ## Environment Variables
 
@@ -31,7 +51,10 @@ This starts:
 MQTT_HOST=mosquitto
 MQTT_PORT=1883
 QDRANT_PATH=/qdrant/storage
+DATABASE_URL=postgresql://prahari:prahari@postgres:5432/prahari
 ```
+
+The `DATABASE_URL` environment variable enables PostgreSQL persistence. When unset or unavailable, the service falls back to in-memory storage automatically.
 
 ### Adapters
 
@@ -68,4 +91,10 @@ mosquitto_sub -h localhost -t "test" -C 1
 
 # Qdrant
 curl http://localhost:6333/healthz
+
+# PostgreSQL (if running)
+curl http://localhost:8000/alerts?limit=10
+
+# Local MQTT broker events
+curl http://localhost:8000/events?limit=10
 ```

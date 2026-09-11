@@ -5,6 +5,45 @@ All notable changes to PRAHARI are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.1] — 2026-09-11
+
+### Added
+- Multi-agent threat coordination system (5 agents: Watcher, Detector, Notifier, Investigator, Copilot)
+- `shared/agents/coordinator.py` — agent coordination framework with context memory
+- Copilot AI chat assistant with 8 tools: trajectory query, scene description, threat detection, event search, suspect search, forensic search, semantic search, zone checks
+- Audio event detection via `shared/adapters/audio_detector.py`
+  - FFT spectral analysis for gunshot, glass_break, scream, loud_bang
+  - 10-second cooldown per event type to reduce false positives
+- Cross-camera trajectory tracking with endpoints:
+  - `GET /trajectory/{track_id}` — view full tracking path
+  - `GET /trajectory/search` — search across all trajectories
+  - `GET /trajectory/predict/{track_id}` — predict next camera location
+  - `POST /trajectory/link` — link trajectory segments
+- Audio analysis endpoint (`POST /audio/analyze`)
+- Live camera grid view in dashboard with MJPEG stream previews
+  - `GET /stream/mjpeg/{camera_id}` — live MJPEG stream
+  - `GET /stream/test_feed/{camera_id}` — synthetic test feed
+- Advanced search endpoints:
+  - `POST /search/events` — filter by camera_ids, event_types, entity_types, min_confidence
+  - `POST /search/forensic` — search by plate_text, event_types, camera_ids, time range
+  - `POST /search/suspect` — description-based cross-camera search
+- Agent monitoring endpoints:
+  - `GET /agent/alerts` — agent-generated alerts
+  - `GET /agent/incidents` — agent-generated incidents
+  - `GET /agent/events` — agent coordination events
+- Incident export with SHA-256 hash chain (`POST /incidents/{incident_id}/export`)
+- Updated chat query routing to delegate track/threat/find/search/describe queries to Copilot agent
+- PRAHARI logo (`dashboard/public/prahari-logo.png`) in the dashboard
+
+### Changed
+- Updated `chat_query` in `app.py` to delegate track/threat/find/search/describe queries to the multi-agent coordinator
+- Updated camera registry with zone definitions (intrusion, no_parking, counting types)
+- README.md and VISION.md completely rewritten with accurate repository structure and all new endpoints
+
+### Fixed
+- Chat query crash by reading cameras from camera-registry.json directly (not PostgreSQL)
+- Resolved zones path using `__file__`-based absolute path in coordinator
+
 ## [0.3.0] — 2026-09-09
 
 ### Added
